@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>FHIR Standalone Launch Demo</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -30,9 +30,8 @@
     <div id="preflightModal" class="modal-overlay">
         <div class="modal">
             <h2 class="modal-header">OAuth 2.0 Authorization Pre-Flight Check</h2>
-            <p style="font-size: 14px; color: #555;">Review the HTTP GET request parameters constructed for the Epic SMART Launch before redirection:</p>
+            <p style="font-size: 14px; color: #555;">Review or modify the HTTP GET request parameters constructed for the Epic SMART Launch before redirection:</p>
             
-            <!-- Inside #preflightModal -->
             <table class="param-table">
                 <tr>
                     <th>Auth Endpoint</th>
@@ -71,7 +70,7 @@
     </div>
 
     <!-- SCRIPT INCLUDES -->
-    <script src="js/config.js"></script>
-    <script src="js/app.js"></script>
+    <script src="config.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
