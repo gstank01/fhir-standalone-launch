@@ -17,8 +17,9 @@ function log(message) {
 // Global variables to store auth values between steps
 let capturedAuthCode = '';
 let pendingAuthUrl = '';
+let currentAccessToken = '';
 
-// --- 1. CALLBACK HANDLER (Runs inside Pop-up when redirected back) ---
+// --- 1. CALLBACK HANDLER (Runs inside Pop-up when redirected back from EHR) ---
 (function handleCallback() {
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
@@ -50,6 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmLaunchBtn = document.getElementById('confirmLaunchBtn');
     const cancelCodeBtn = document.getElementById('cancelCodeBtn');
     const confirmTokenExchangeBtn = document.getElementById('confirmTokenExchangeBtn');
+    const cancelFhirBtn = document.getElementById('cancelFhirBtn');
+    const confirmFhirFetchBtn = document.getElementById('confirmFhirFetchBtn');
 
     // Safe DOM value getters/setters
     const getVal = (id) => document.getElementById(id)?.value || '';
@@ -58,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.value = val || '';
     };
 
-    // Helper to update Preview GET Request URL live
+    // Helper to update Step 1 GET Request Preview URL live
     function updatePreviewUrl() {
         const endpoint = getVal('m-endpoint');
         const params = new URLSearchParams({
@@ -118,7 +121,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pre-Flight Modal -> Confirm & Launch Auth Popup Window
     confirmLaunchBtn?.addEventListener('click', () => {
         try {
-            // Save state in case the user edited it manually
             const currentState = getVal('m-state');
             sessionStorage.setItem('fhir_state', currentState);
 
@@ -132,35 +134,98 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Step 2 Modal -> Abort Exchange
+    // Step 2/3 Modal -> Abort Exchange
     cancelCodeBtn?.addEventListener('click', () => {
         document.getElementById('codeModal')?.classList.remove('active');
         log("Token exchange aborted by user. Code was captured but not exchanged.");
     });
 
-    // Step 2 Modal -> Confirm Exchange -> Proceed to Step 3 (Token Exchange)
+    // Step 3 Confirmation -> Perform Token Exchange & Transition to Step 4 Pre-Flight
     confirmTokenExchangeBtn?.addEventListener('click', async () => {
         document.getElementById('codeModal')?.classList.remove('active');
         
         log("Proceeding to Step 3: Exchanging authorization code for Access Token...");
 
         try {
-            const tokenData = await exchangeCodeForToken(capturedAuthCode);
+            const tokenData = await exchangeCodeForToken();
             log("Success! Access Token acquired.");
 
-            log("Fetching Appointment resources from FHIR server...");
-            fetchAppointments(tokenData.access_token);
+            // Store acquired token globally
+            currentAccessToken = tokenData.access_token;
+
+            // Extract context patient ID returned by Epic
+            const patientId = tokenData.patient || '';
+            if (patientId) {
+                log(`Context Patient ID acquired: ${patientId}`);
+            }
+
+            // Populate Step 4 FHIR Inspection Modal
+            const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
+            setVal('m-bearer-token', currentAccessToken);
+            setVal('m-fhir-patient-id', patientId);
+
+            // Construct default target FHIR endpoint URL
+            const defaultEndpoint = patientId 
+                ? `${fhirBaseUrl}/Appointment?patient=${patientId}` 
+                : `${fhirBaseUrl}/Patient`;
+            setVal('m-fhir-endpoint', defaultEndpoint);
+
+            // Function to render raw HTTP GET Request preview for Step 4
+            function updateFhirGetPreview() {
+                const targetUrl = getVal('m-fhir-endpoint');
+                const token = getVal('m-bearer-token');
+
+                const rawHttpGetText = 
+`GET ${targetUrl} HTTP/1.1
+Host: fhir.epic.com
+Authorization: Bearer ${token}
+Accept: application/fhir+json`;
+
+                const previewEl = document.getElementById('m-fhir-get-preview');
+                if (previewEl) previewEl.textContent = rawHttpGetText;
+            }
+
+            // Attach dynamic typing listeners to Step 4 inputs
+            ['m-fhir-endpoint', 'm-fhir-patient-id', 'm-bearer-token'].forEach(id => {
+                document.getElementById(id)?.addEventListener('input', updateFhirGetPreview);
+            });
+
+            updateFhirGetPreview();
+
+            // Open Step 4 Modal and PAUSE
+            const fhirModal = document.getElementById('fhirModal');
+            if (fhirModal) {
+                fhirModal.classList.add('active');
+                log("PAUSED at Step 4: Inspect Bearer Token and outgoing GET request prior to fetching FHIR resources.");
+            }
         } catch (err) {
             log(`Token Exchange Failed: ${err.message}`);
         }
     });
+
+    // Step 4 Modal -> Abort
+    cancelFhirBtn?.addEventListener('click', () => {
+        document.getElementById('fhirModal')?.classList.remove('active');
+        log("FHIR query aborted by user.");
+    });
+
+    // Step 4 Modal -> Execute Final FHIR API GET Request
+    confirmFhirFetchBtn?.addEventListener('click', async () => {
+        document.getElementById('fhirModal')?.classList.remove('active');
+        
+        const targetEndpoint = getVal('m-fhir-endpoint');
+        const token = getVal('m-bearer-token');
+
+        log(`Sending Authorized FHIR Request to ${targetEndpoint}...`);
+        fetchFhirResource(targetEndpoint, token);
+    });
 });
 
-// --- 3. LISTEN FOR AUTH CODE & INTERCEPT BEFORE STEP 3 ---
+// --- 3. LISTEN FOR AUTH CODE & INTERCEPT AT STEP 2/3 ---
 window.addEventListener('message', (event) => {
     if (event.origin !== window.location.origin) return;
 
-    if (event.data.type === 'AUTH_CODE') {
+    if (event.data && event.data.type === 'AUTH_CODE') {
         const { code, state } = event.data;
         const savedState = sessionStorage.getItem('fhir_state');
 
@@ -173,42 +238,86 @@ window.addEventListener('message', (event) => {
 
         log("Step 2 Complete: Authorization Code captured successfully!");
 
-        // 2. Store code temporarily and populate Step 2 modal
         capturedAuthCode = code;
-        
-        const returnedStateInput = document.getElementById('m-returned-state');
-        const authCodeInput = document.getElementById('m-auth-code');
+
+        // 2. Extract values from Step 1 config/edits
+        const redirectUri = document.getElementById('m-redirect-uri')?.value || CONFIG.REDIRECT_URI;
+        const clientId = document.getElementById('m-client-id')?.value || CONFIG.CLIENT_ID;
+
+        const setVal = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.value = val || '';
+        };
+
+        // 3. Populate Step 3 Modal Inputs
+        setVal('m-returned-state', state);
+        setVal('m-token-endpoint', CONFIG.TOKEN_URL);
+        setVal('m-grant-type', 'authorization_code');
+        setVal('m-auth-code', code);
+        setVal('m-step3-redirect-uri', redirectUri);
+        setVal('m-step3-client-id', clientId);
+
+        // 4. Live update function for HTTP POST request preview box
+        function updatePostPreview() {
+            const endpoint = document.getElementById('m-token-endpoint')?.value || CONFIG.TOKEN_URL;
+            const bodyParams = new URLSearchParams({
+                grant_type: document.getElementById('m-grant-type')?.value || 'authorization_code',
+                code: document.getElementById('m-auth-code')?.value || '',
+                redirect_uri: document.getElementById('m-step3-redirect-uri')?.value || '',
+                client_id: document.getElementById('m-step3-client-id')?.value || ''
+            });
+
+            const rawHttpPostText = 
+`POST ${endpoint} HTTP/1.1
+Host: fhir.epic.com
+Content-Type: application/x-www-form-urlencoded
+Accept: application/json
+
+${bodyParams.toString()}`;
+
+            const previewEl = document.getElementById('m-post-preview');
+            if (previewEl) previewEl.textContent = rawHttpPostText;
+        }
+
+        // Attach listeners to Step 3 fields
+        ['m-token-endpoint', 'm-grant-type', 'm-auth-code', 'm-step3-redirect-uri', 'm-step3-client-id'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('input', updatePostPreview);
+        });
+
+        updatePostPreview();
+
+        // 5. Open Step 2/3 Inspection Modal & PAUSE
         const codeModal = document.getElementById('codeModal');
-
-        if (returnedStateInput) returnedStateInput.value = state;
-        if (authCodeInput) authCodeInput.value = code;
-
-        // 3. Open Code Inspection Modal (Pauses before Step 3)
         if (codeModal) {
             codeModal.classList.add('active');
-            log("Authorization code displayed for inspection. Awaiting manual trigger to exchange for token.");
+            log("Authorization code displayed for inspection. Review token request payload before proceeding.");
         }
     }
 });
 
-// --- 4. STEP 3 API CALLS ---
-async function exchangeCodeForToken(authCode) {
-    const clientId = document.getElementById('m-client-id')?.value || CONFIG.CLIENT_ID;
-    const redirectUri = document.getElementById('m-redirect-uri')?.value || CONFIG.REDIRECT_URI;
+// --- 4. STEP 3 & STEP 4 API CALLS ---
+async function exchangeCodeForToken() {
+    // Read exact user-edited values from Step 3 Modal
+    const tokenEndpoint = document.getElementById('m-token-endpoint')?.value || CONFIG.TOKEN_URL;
+    const grantType = document.getElementById('m-grant-type')?.value || 'authorization_code';
+    const code = document.getElementById('m-auth-code')?.value || capturedAuthCode;
+    const redirectUri = document.getElementById('m-step3-redirect-uri')?.value || CONFIG.REDIRECT_URI;
+    const clientId = document.getElementById('m-step3-client-id')?.value || CONFIG.CLIENT_ID;
 
     const bodyParams = new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: authCode,
+        grant_type: grantType,
+        code: code,
         redirect_uri: redirectUri,
         client_id: clientId
     });
 
-    const response = await fetch(CONFIG.TOKEN_URL, {
+    const response = await fetch(tokenEndpoint, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
         },
-        body: bodyParams
+        body: bodyParams.toString()
     });
 
     if (!response.ok) {
@@ -219,11 +328,9 @@ async function exchangeCodeForToken(authCode) {
     return await response.json();
 }
 
-async function fetchAppointments(token) {
-    const fhirBaseUrl = document.getElementById('m-aud')?.value || CONFIG.FHIR_BASE_URL;
-
+async function fetchFhirResource(targetUrl, token) {
     try {
-        const response = await fetch(`${fhirBaseUrl}/Appointment?_count=3`, {
+        const response = await fetch(targetUrl, {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/fhir+json'
@@ -231,13 +338,18 @@ async function fetchAppointments(token) {
         });
 
         if (!response.ok) {
-            throw new Error(`Server returned status ${response.status}`);
+            const errText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errText}`);
         }
 
         const data = await response.json();
-        log("Success! Appointments retrieved.");
-        document.getElementById('fhirData').textContent = JSON.stringify(data, null, 2);
+        log("Success! FHIR resource data retrieved.");
+        
+        const container = document.getElementById('fhirData');
+        if (container) {
+            container.textContent = JSON.stringify(data, null, 2);
+        }
     } catch (err) {
-        log(`Error fetching FHIR data: ${err.message}`);
+        log(`Error fetching FHIR resource: ${err.message}`);
     }
 }
