@@ -125,7 +125,7 @@
         </div>
     </div>
 
-    <!-- STEP 4: PATIENT SEARCH & APPOINTMENT FETCH MODAL -->
+   <!-- STEP 4: PATIENT SEARCH & APPOINTMENT FETCH MODAL -->
 <div id="fhirModal" class="modal-overlay">
   <div class="modal">
     <h2 class="modal-header">Step 4: Patient Context Lookup & FHIR Query</h2>
@@ -133,19 +133,19 @@
       Since no patient context was bound during standalone launch, input search demographics to look up the patient's FHIR ID first:
     </p>
 
-    <!-- PATIENT DEMOGRAPHICS INPUTS -->
+    <!-- PATIENT DEMOGRAPHICS INPUTS (HARDCODED FOR TESTING) -->
     <table class="param-table">
       <tr>
         <th>Patient Given/Family Name</th>
-        <td><input type="text" id="m-search-name" class="param-input" value="Jason"></td>
+        <td><input type="text" id="m-search-name" class="param-input" value="Hackett"></td>
       </tr>
       <tr>
         <th>Date of Birth (YYYY-MM-DD)</th>
-        <td><input type="text" id="m-search-dob" class="param-input" placeholder="e.g. 1985-07-24"></td>
+        <td><input type="text" id="m-search-dob" class="param-input" value="1987-01-15"></td>
       </tr>
       <tr>
         <th>Identifier (e.g. MRN)</th>
-        <td><input type="text" id="m-search-identifier" class="param-input" placeholder="e.g. 12345"></td>
+        <td><input type="text" id="m-search-identifier" class="param-input" value="AO13LGR893FNTX9"></td>
       </tr>
       <tr>
         <th>Bearer Access Token</th>
