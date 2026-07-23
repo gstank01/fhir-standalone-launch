@@ -26,10 +26,10 @@
         </div>
     </div>
 
-    <!-- PRE-FLIGHT INSPECTION MODAL -->
+    <!-- STEP 1: PRE-FLIGHT INSPECTION MODAL -->
     <div id="preflightModal" class="modal-overlay">
         <div class="modal">
-            <h2 class="modal-header">OAuth 2.0 Authorization Pre-Flight Check</h2>
+            <h2 class="modal-header">Step 1: OAuth 2.0 Authorization Pre-Flight Check</h2>
             <p style="font-size: 14px; color: #555;">Review or modify the HTTP GET request parameters constructed for the Epic SMART Launch before redirection:</p>
             
             <table class="param-table">
@@ -60,23 +60,24 @@
             </table>
 
             <h3>Constructed GET Request URL</h3>
-            <pre id="m-full-url"></pre>
+            <pre id="m-full-url" style="white-space: pre-wrap; word-break: break-all;"></pre>
 
             <div class="modal-actions">
                 <button id="cancelModalBtn" class="secondary">Cancel</button>
                 <button id="confirmLaunchBtn">Proceed & Send Request</button>
             </div>
         </div>
-    </div> <!-- CLOSED FIRST MODAL HERE -->
+    </div>
 
-    <!-- STEP 2 CODE INSPECTION MODAL -->
+    <!-- STEP 2 CAPTURE & STEP 3 TOKEN POST PRE-FLIGHT MODAL -->
     <div id="codeModal" class="modal-overlay">
         <div class="modal">
-            <h2 class="modal-header">Step 2 Complete: Authorization Code Received</h2>
+            <h2 class="modal-header">Steps 2 & 3: Authorization Code & Token Exchange Check</h2>
             <p style="font-size: 14px; color: #555;">
-                The EHR successfully authenticated the user and redirected back to your <code>redirect_uri</code> with the authorization code and state.
+                EHR authenticated the user and returned an authorization code. Review/edit the outgoing <code>application/x-www-form-urlencoded</code> POST payload before sending to <code>/oauth2/token</code>:
             </p>
 
+            <!-- STEP 2 RETURNED DATA -->
             <table class="param-table">
                 <tr>
                     <th>Returned State</th>
@@ -86,23 +87,76 @@
                     <th>State Validated?</th>
                     <td><span id="m-state-valid" style="font-weight: bold; color: green;">✓ Matches Session State</span></td>
                 </tr>
+            </table>
+
+            <h3 style="margin-top: 15px; color: #0076d6;">Step 3 Token Request Payload Body</h3>
+            
+            <!-- STEP 3 EDITABLE POST PARAMETERS -->
+            <table class="param-table">
                 <tr>
-                    <th>Authorization Code</th>
-                    <td><textarea id="m-auth-code" class="param-input" rows="4" readonly></textarea></td>
+                    <th>Token Endpoint</th>
+                    <td><input type="text" id="m-token-endpoint" class="param-input"></td>
+                </tr>
+                <tr>
+                    <th>grant_type</th>
+                    <td><input type="text" id="m-grant-type" class="param-input" value="authorization_code"></td>
+                </tr>
+                <tr>
+                    <th>code</th>
+                    <td><textarea id="m-auth-code" class="param-input" rows="3"></textarea></td>
+                </tr>
+                <tr>
+                    <th>redirect_uri</th>
+                    <td><input type="text" id="m-step3-redirect-uri" class="param-input"></td>
+                </tr>
+                <tr>
+                    <th>client_id</th>
+                    <td><input type="text" id="m-step3-client-id" class="param-input"></td>
                 </tr>
             </table>
 
-            <h3>Next Step: Token Exchange (POST to /oauth2/token)</h3>
-            <p style="font-size: 13px; color: #666;">
-                Clicking proceed will send a <code>application/x-www-form-urlencoded</code> POST request to exchange this short-lived code for an Access Token.
-            </p>
+            <h3>Constructed Raw HTTP POST Preview</h3>
+            <pre id="m-post-preview" style="background: #1e1e1e; color: #4af626; padding: 10px; border-radius: 4px; font-size: 12px; font-family: monospace; white-space: pre-wrap; word-break: break-all;"></pre>
 
             <div class="modal-actions">
                 <button id="cancelCodeBtn" class="secondary">Abort Exchange</button>
                 <button id="confirmTokenExchangeBtn">Exchange Code for Access Token</button>
             </div>
         </div>
-    </div> <!-- CLOSED SECOND MODAL HERE -->
+    </div>
+
+    <!-- STEP 4: FHIR RESOURCE GET REQUEST PRE-FLIGHT MODAL -->
+    <div id="fhirModal" class="modal-overlay">
+        <div class="modal">
+            <h2 class="modal-header">Step 4: Pre-Flight FHIR Request Inspection</h2>
+            <p style="font-size: 14px; color: #555;">
+                Access Token successfully acquired! Review the Bearer token and inspect the HTTP GET request before querying the FHIR server:
+            </p>
+
+            <table class="param-table">
+                <tr>
+                    <th>Context Patient ID</th>
+                    <td><input type="text" id="m-fhir-patient-id" class="param-input" placeholder="e.g. e-1234"></td>
+                </tr>
+                <tr>
+                    <th>Target FHIR Query URL</th>
+                    <td><input type="text" id="m-fhir-endpoint" class="param-input"></td>
+                </tr>
+                <tr>
+                    <th>Bearer Access Token</th>
+                    <td><textarea id="m-bearer-token" class="param-input" rows="3" readonly></textarea></td>
+                </tr>
+            </table>
+
+            <h3>Outgoing HTTP GET Request Preview</h3>
+            <pre id="m-fhir-get-preview" style="background: #1e1e1e; color: #4af626; padding: 10px; border-radius: 4px; font-size: 12px; font-family: monospace; white-space: pre-wrap; word-break: break-all;"></pre>
+
+            <div class="modal-actions">
+                <button id="cancelFhirBtn" class="secondary">Abort Query</button>
+                <button id="confirmFhirFetchBtn">Execute Step 4: Send FHIR GET Request</button>
+            </div>
+        </div>
+    </div>
 
     <!-- SCRIPT INCLUDES -->
     <script src="js/config.js"></script>
