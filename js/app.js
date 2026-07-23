@@ -1,5 +1,5 @@
-// --- PKCE & CRYPTO HELPER FUNCTIONS ---
-function generateRandomString(length = 64) {
+// --- RANDOM STRING GENERATOR (For State) ---
+function generateRandomString(length = 32) {
     const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
     const values = new Uint8Array(length);
     crypto.getRandomValues(values);
@@ -43,39 +43,49 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelModalBtn = document.getElementById('cancelModalBtn');
     const confirmLaunchBtn = document.getElementById('confirmLaunchBtn');
 
+    // Helper function to build URL live from input fields
+    function updatePreviewUrl() {
+        const endpoint = document.getElementById('m-endpoint').value;
+        
+        const params = new URLSearchParams({
+            response_type: 'code',
+            client_id: document.getElementById('m-client-id').value,
+            redirect_uri: document.getElementById('m-redirect-uri').value,
+            state: document.getElementById('m-state').value,
+            scope: document.getElementById('m-scope').value,
+            aud: document.getElementById('m-aud').value
+        });
+
+        pendingAuthUrl = `${endpoint}?${params.toString()}`;
+        document.getElementById('m-full-url').textContent = pendingAuthUrl;
+    }
+
+    // Bind real-time input change listeners so URL preview updates dynamically
+    document.querySelectorAll('.param-input').forEach(input => {
+        input.addEventListener('input', updatePreviewUrl);
+    });
+
     // Trigger Pre-Flight Screen
     launchBtn.addEventListener('click', () => {
         log("Generating authorization parameters...");
 
         const state = generateRandomString(32);
-
-        // Store state in Session Storage
         sessionStorage.setItem('fhir_state', state);
 
-        const params = new URLSearchParams({
-            response_type: 'code',
-            client_id: CONFIG.CLIENT_ID,
-            redirect_uri: CONFIG.REDIRECT_URI,
-            state: state,
-            scope: CONFIG.SCOPES,
-            aud: CONFIG.FHIR_BASE_URL
-        });
+        // Populate editable input fields with default config values
+        document.getElementById('m-endpoint').value = CONFIG.AUTH_URL;
+        document.getElementById('m-client-id').value = CONFIG.CLIENT_ID;
+        document.getElementById('m-redirect-uri').value = CONFIG.REDIRECT_URI;
+        document.getElementById('m-aud').value = CONFIG.FHIR_BASE_URL;
+        document.getElementById('m-state').value = state;
+        document.getElementById('m-scope').value = CONFIG.SCOPES;
 
-        pendingAuthUrl = `${CONFIG.AUTH_URL}?${params.toString()}`;
-
-        // Populate Modal Fields
-        document.getElementById('m-endpoint').textContent = CONFIG.AUTH_URL;
-        document.getElementById('m-client-id').textContent = CONFIG.CLIENT_ID;
-        document.getElementById('m-redirect-uri').textContent = CONFIG.REDIRECT_URI;
-        document.getElementById('m-aud').textContent = CONFIG.FHIR_BASE_URL;
-        document.getElementById('m-state').textContent = state;
-        document.getElementById('m-pkce').textContent = 'Excluded (Not Required)';
-        document.getElementById('m-scope').textContent = CONFIG.SCOPES;
-        document.getElementById('m-full-url').textContent = pendingAuthUrl;
+        // Render initial URL preview
+        updatePreviewUrl();
 
         // Display Modal
         document.getElementById('preflightModal').classList.add('active');
-        log("Pre-flight screen displayed.");
+        log("Pre-flight screen displayed. Edit fields as needed.");
     });
 
     // Cancel Button
@@ -86,6 +96,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Confirm & Open Popup
     confirmLaunchBtn.addEventListener('click', () => {
+        // Sync sessionStorage in case the user manually edited the 'state' input
+        const currentState = document.getElementById('m-state').value;
+        sessionStorage.setItem('fhir_state', currentState);
+
+        // Final URL sync
+        updatePreviewUrl();
+
         document.getElementById('preflightModal').classList.remove('active');
         log("Opening secure authentication pop-up...");
         window.open(pendingAuthUrl, 'FHIR Auth', 'width=600,height=700');
@@ -113,11 +130,15 @@ window.addEventListener('message', async (event) => {
 });
 
 async function exchangeCodeForToken(authCode) {
+    // Uses the edited values from DOM if changed, otherwise falls back to CONFIG
+    const clientId = document.getElementById('m-client-id')?.value || CONFIG.CLIENT_ID;
+    const redirectUri = document.getElementById('m-redirect-uri')?.value || CONFIG.REDIRECT_URI;
+
     const bodyParams = new URLSearchParams({
         grant_type: 'authorization_code',
         code: authCode,
-        redirect_uri: CONFIG.REDIRECT_URI,
-        client_id: CONFIG.CLIENT_ID
+        redirect_uri: redirectUri,
+        client_id: clientId
     });
 
     const response = await fetch(CONFIG.TOKEN_URL, {
@@ -137,8 +158,10 @@ async function exchangeCodeForToken(authCode) {
 }
 
 async function fetchAppointments(token) {
+    const fhirBaseUrl = document.getElementById('m-aud')?.value || CONFIG.FHIR_BASE_URL;
+
     try {
-        const response = await fetch(`${CONFIG.FHIR_BASE_URL}/Appointment?_count=3`, {
+        const response = await fetch(`${fhirBaseUrl}/Appointment?_count=3`, {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/fhir+json'
