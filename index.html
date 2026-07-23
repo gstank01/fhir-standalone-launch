@@ -7,10 +7,22 @@
         body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; background: #f4f6f9; }
         .container { display: flex; gap: 20px; }
         .box { flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        button { background: #0076d6; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button { background: #0076d6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 15px; }
+        button.secondary { background: #6c757d; }
         button:disabled { background: #a0c4e2; cursor: not-allowed; }
-        pre { background: #272822; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto; max-height: 300px; }
+        pre { background: #272822; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto; max-height: 250px; white-space: pre-wrap; word-break: break-all; }
         #logs { max-height: 150px; overflow-y: auto; font-family: monospace; font-size: 13px; background: #eee; padding: 10px; border-radius: 4px; }
+        
+        /* PRE-FLIGHT MODAL STYLES */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 8px; max-width: 750px; width: 90%; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .modal-header { margin-top: 0; border-bottom: 2px solid #f4f6f9; padding-bottom: 10px; }
+        .param-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+        .param-table th, .param-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #ddd; }
+        .param-table th { background-color: #f8f9fa; font-weight: 600; width: 30%; }
+        .param-value { font-family: monospace; color: #d63384; word-break: break-all; }
+        .modal-actions { margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }
     </style>
 </head>
 <body>
@@ -34,12 +46,40 @@
         </div>
     </div>
 
+    <!-- PRE-FLIGHT INSPECTION MODAL -->
+    <div id="preflightModal" class="modal-overlay">
+        <div class="modal">
+            <h2 class="modal-header">OAuth 2.0 Authorization Pre-Flight Check</h2>
+            <p style="font-size: 14px; color: #555;">Review the HTTP GET request parameters constructed for the Epic SMART Launch before redirection:</p>
+            
+            <table class="param-table">
+                <tr><th>Auth Endpoint</th><td id="m-endpoint" class="param-value"></td></tr>
+                <tr><th>Client ID</th><td id="m-client-id" class="param-value"></td></tr>
+                <tr><th>Redirect URI</th><td id="m-redirect-uri" class="param-value"></td></tr>
+                <tr><th>Audience (aud)</th><td id="m-aud" class="param-value"></td></tr>
+                <tr><th>State (CSRF)</th><td id="m-state" class="param-value"></td></tr>
+                <tr><th>PKCE Challenge</th><td id="m-pkce" class="param-value"></td></tr>
+                <tr><th>Scopes Requested</th><td id="m-scope" class="param-value"></td></tr>
+            </table>
+
+            <h3>Constructed GET Request URL</h3>
+            <pre id="m-full-url"></pre>
+
+            <div class="modal-actions">
+                <button id="cancelModalBtn" class="secondary">Cancel</button>
+                <button id="confirmLaunchBtn">Proceed & Send Request</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        const CLIENT_ID = 'ef3b2af6-c1b8-4421-9dda-108c6ac8afce';
-        const FHIR_BASE_URL = 'https://vendorservices.epic.com/interconnect-amcurprd-oauth/api/FHIR/R4'; // Epic Sandbox Base URL
-        const AUTH_URL = 'https://vendorservices.epic.com/interconnect-amcurprd-oauth/oauth2/authorize';
-        const TOKEN_URL = 'https://vendorservices.epic.com/interconnect-amcurprd-oauth/oauth2/authorize';
+        const CLIENT_ID = 'your_epic_client_id';
+        const FHIR_BASE_URL = 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4'; 
+        const AUTH_URL = 'https://fhir.epic.com/interconnect-fhir-oauth/oauth2/authorize';
+        const TOKEN_URL = 'https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token';
         const REDIRECT_URI = window.location.origin + window.location.pathname; 
+
+        let pendingAuthUrl = '';
 
         // --- PKCE & CRYPTO HELPER FUNCTIONS ---
         function generateRandomString(length = 64) {
@@ -84,16 +124,15 @@
             }
         }
 
-        // --- 2. MAIN DASHBOARD LAUNCH LOGIC ---
+        // --- 2. PRE-FLIGHT PREPARATION LOGIC ---
         document.getElementById('launchBtn').addEventListener('click', async () => {
-            log("Initiating Standalone Launch...");
+            log("Generating PKCE keys and authorization request parameters...");
             
-            // Generate cryptographically secure state & PKCE values
             const state = generateRandomString(32);
             const codeVerifier = generateRandomString(64);
             const codeChallenge = await generateCodeChallenge(codeVerifier);
 
-            // Persist state & verifier for callback/exchange steps
+            // Persist locally
             sessionStorage.setItem('fhir_state', state);
             sessionStorage.setItem('fhir_code_verifier', codeVerifier);
 
@@ -110,10 +149,34 @@
                 code_challenge_method: 'S256'
             });
 
-            const fullAuthUrl = `${AUTH_URL}?${params.toString()}`;
-            
+            pendingAuthUrl = `${AUTH_URL}?${params.toString()}`;
+
+            // Populate the Pre-Flight Modal UI
+            document.getElementById('m-endpoint').textContent = AUTH_URL;
+            document.getElementById('m-client-id').textContent = CLIENT_ID;
+            document.getElementById('m-redirect-uri').textContent = REDIRECT_URI;
+            document.getElementById('m-aud').textContent = FHIR_BASE_URL;
+            document.getElementById('m-state').textContent = state;
+            document.getElementById('m-pkce').textContent = `${codeChallenge} (Method: S256)`;
+            document.getElementById('m-scope').textContent = scope;
+            document.getElementById('m-full-url').textContent = pendingAuthUrl;
+
+            // Open Modal
+            document.getElementById('preflightModal').classList.add('active');
+            log("Pre-flight screen displayed. Awaiting user confirmation.");
+        });
+
+        // Modal Action: Cancel
+        document.getElementById('cancelModalBtn').addEventListener('click', () => {
+            document.getElementById('preflightModal').classList.remove('active');
+            log("Launch canceled by user.");
+        });
+
+        // Modal Action: Proceed
+        document.getElementById('confirmLaunchBtn').addEventListener('click', () => {
+            document.getElementById('preflightModal').classList.remove('active');
             log("Opening secure authentication pop-up...");
-            window.open(fullAuthUrl, 'FHIR Auth', 'width=600,height=700');
+            window.open(pendingAuthUrl, 'FHIR Auth', 'width=600,height=700');
         });
 
         // --- 3. RECEIVE CALLBACK & EXCHANGE TOKEN ---
