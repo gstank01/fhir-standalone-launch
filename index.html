@@ -32,14 +32,32 @@
             <h2 class="modal-header">OAuth 2.0 Authorization Pre-Flight Check</h2>
             <p style="font-size: 14px; color: #555;">Review the HTTP GET request parameters constructed for the Epic SMART Launch before redirection:</p>
             
+            <!-- Inside #preflightModal -->
             <table class="param-table">
-                <tr><th>Auth Endpoint</th><td id="m-endpoint" class="param-value"></td></tr>
-                <tr><th>Client ID</th><td id="m-client-id" class="param-value"></td></tr>
-                <tr><th>Redirect URI</th><td id="m-redirect-uri" class="param-value"></td></tr>
-                <tr><th>Audience (aud)</th><td id="m-aud" class="param-value"></td></tr>
-                <tr><th>State (CSRF)</th><td id="m-state" class="param-value"></td></tr>
-                <tr><th>PKCE Challenge</th><td id="m-pkce" class="param-value"></td></tr>
-                <tr><th>Scopes Requested</th><td id="m-scope" class="param-value"></td></tr>
+                <tr>
+                    <th>Auth Endpoint</th>
+                    <td><input type="text" id="m-endpoint" class="param-input"></td>
+                </tr>
+                <tr>
+                    <th>Client ID</th>
+                    <td><input type="text" id="m-client-id" class="param-input"></td>
+                </tr>
+                <tr>
+                    <th>Redirect URI</th>
+                    <td><input type="text" id="m-redirect-uri" class="param-input"></td>
+                </tr>
+                <tr>
+                    <th>Audience (aud)</th>
+                    <td><input type="text" id="m-aud" class="param-input"></td>
+                </tr>
+                <tr>
+                    <th>State (CSRF)</th>
+                    <td><input type="text" id="m-state" class="param-input"></td>
+                </tr>
+                <tr>
+                    <th>Scopes Requested</th>
+                    <td><textarea id="m-scope" class="param-input" rows="2"></textarea></td>
+                </tr>
             </table>
 
             <h3>Constructed GET Request URL</h3>
