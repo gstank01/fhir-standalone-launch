@@ -1,27 +1,9 @@
-// app.js
-
 // --- PKCE & CRYPTO HELPER FUNCTIONS ---
 function generateRandomString(length = 64) {
     const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
     const values = new Uint8Array(length);
     crypto.getRandomValues(values);
     return Array.from(values).map(x => possible[x % possible.length]).join('');
-}
-
-async function sha256(plain) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(plain);
-    return crypto.subtle.digest('SHA-256', data);
-}
-
-function base64urlencode(a) {
-    return btoa(String.fromCharCode(...new Uint8Array(a)))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-async function generateCodeChallenge(verifier) {
-    const hashed = await sha256(verifier);
-    return base64urlencode(hashed);
 }
 
 // --- LOGGING HELPER ---
@@ -62,16 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmLaunchBtn = document.getElementById('confirmLaunchBtn');
 
     // Trigger Pre-Flight Screen
-    launchBtn.addEventListener('click', async () => {
-        log("Generating PKCE keys and authorization parameters...");
+    launchBtn.addEventListener('click', () => {
+        log("Generating authorization parameters...");
 
         const state = generateRandomString(32);
-        const codeVerifier = generateRandomString(64);
-        const codeChallenge = await generateCodeChallenge(codeVerifier);
 
-        // Store state & verifier in Session Storage
+        // Store state in Session Storage
         sessionStorage.setItem('fhir_state', state);
-        sessionStorage.setItem('fhir_code_verifier', codeVerifier);
 
         const params = new URLSearchParams({
             response_type: 'code',
@@ -79,9 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
             redirect_uri: CONFIG.REDIRECT_URI,
             state: state,
             scope: CONFIG.SCOPES,
-            aud: CONFIG.FHIR_BASE_URL,
-            code_challenge: codeChallenge,
-            code_challenge_method: 'S256'
+            aud: CONFIG.FHIR_BASE_URL
         });
 
         pendingAuthUrl = `${CONFIG.AUTH_URL}?${params.toString()}`;
@@ -92,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('m-redirect-uri').textContent = CONFIG.REDIRECT_URI;
         document.getElementById('m-aud').textContent = CONFIG.FHIR_BASE_URL;
         document.getElementById('m-state').textContent = state;
-        document.getElementById('m-pkce').textContent = `${codeChallenge} (Method: S256)`;
+        document.getElementById('m-pkce').textContent = 'Excluded (Not Required)';
         document.getElementById('m-scope').textContent = CONFIG.SCOPES;
         document.getElementById('m-full-url').textContent = pendingAuthUrl;
 
@@ -136,14 +113,11 @@ window.addEventListener('message', async (event) => {
 });
 
 async function exchangeCodeForToken(authCode) {
-    const codeVerifier = sessionStorage.getItem('fhir_code_verifier');
-
     const bodyParams = new URLSearchParams({
         grant_type: 'authorization_code',
         code: authCode,
         redirect_uri: CONFIG.REDIRECT_URI,
-        client_id: CONFIG.CLIENT_ID,
-        code_verifier: codeVerifier
+        client_id: CONFIG.CLIENT_ID
     });
 
     const response = await fetch(CONFIG.TOKEN_URL, {
