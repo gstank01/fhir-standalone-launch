@@ -67,7 +67,42 @@
                 <button id="confirmLaunchBtn">Proceed & Send Request</button>
             </div>
         </div>
-    </div>
+    </div> <!-- CLOSED FIRST MODAL HERE -->
+
+    <!-- STEP 2 CODE INSPECTION MODAL -->
+    <div id="codeModal" class="modal-overlay">
+        <div class="modal">
+            <h2 class="modal-header">Step 2 Complete: Authorization Code Received</h2>
+            <p style="font-size: 14px; color: #555;">
+                The EHR successfully authenticated the user and redirected back to your <code>redirect_uri</code> with the authorization code and state.
+            </p>
+
+            <table class="param-table">
+                <tr>
+                    <th>Returned State</th>
+                    <td><input type="text" id="m-returned-state" class="param-input" readonly></td>
+                </tr>
+                <tr>
+                    <th>State Validated?</th>
+                    <td><span id="m-state-valid" style="font-weight: bold; color: green;">✓ Matches Session State</span></td>
+                </tr>
+                <tr>
+                    <th>Authorization Code</th>
+                    <td><textarea id="m-auth-code" class="param-input" rows="4" readonly></textarea></td>
+                </tr>
+            </table>
+
+            <h3>Next Step: Token Exchange (POST to /oauth2/token)</h3>
+            <p style="font-size: 13px; color: #666;">
+                Clicking proceed will send a <code>application/x-www-form-urlencoded</code> POST request to exchange this short-lived code for an Access Token.
+            </p>
+
+            <div class="modal-actions">
+                <button id="cancelCodeBtn" class="secondary">Abort Exchange</button>
+                <button id="confirmTokenExchangeBtn">Exchange Code for Access Token</button>
+            </div>
+        </div>
+    </div> <!-- CLOSED SECOND MODAL HERE -->
 
     <!-- SCRIPT INCLUDES -->
     <script src="js/config.js"></script>
