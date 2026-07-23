@@ -334,7 +334,7 @@ async function fetchFhirResource(targetUrl, token) {
     const response = await fetch(targetUrl, {
         headers: {
             'Authorization': `Bearer ${token}`,
-            'Accept': 'application/fhir+json'
+            'Accept': 'application/json, application/fhir+json'
         }
     });
 
