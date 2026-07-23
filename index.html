@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>FHIR Standalone Launch Demo</title>
     <style>
-        body { font-family: sans-serif; margin: 40px; background: #f4f6f9; }
+        body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; background: #f4f6f9; }
         .container { display: flex; gap: 20px; }
         .box { flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         button { background: #0076d6; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px; }
-        pre { background: #272822; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto; }
+        button:disabled { background: #a0c4e2; cursor: not-allowed; }
+        pre { background: #272822; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto; max-height: 300px; }
+        #logs { max-height: 150px; overflow-y: auto; font-family: monospace; font-size: 13px; background: #eee; padding: 10px; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -32,35 +35,88 @@
     </div>
 
     <script>
-        const CLIENT_ID = 'your_client_id';
-        const FHIR_BASE_URL = 'https://example.com';
-        const AUTH_URL = 'https://example.com';
-        const REDIRECT_URI = window.location.origin + window.location.pathname; // Points back to this same GitHub page
+        const CLIENT_ID = 'ef3b2af6-c1b8-4421-9dda-108c6ac8afce';
+        const FHIR_BASE_URL = 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4'; // Epic Sandbox Base URL
+        const AUTH_URL = 'https://vendorservices.epic.com/interconnect-amcurprd-oauth/oauth2/authorize';
+        const TOKEN_URL = 'https://vendorservices.epic.com/interconnect-amcurprd-oauth/oauth2/authorize';
+        const REDIRECT_URI = window.location.origin + window.location.pathname; 
 
-        // 1. Check if this instance of the page is actually the pop-up receiving the token
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        
-        if (code) {
-            // We are inside the pop-up! Send the code back to the main dashboard window
-            window.opener.postMessage({ type: 'AUTH_CODE', code: code }, window.location.origin);
-            window.close(); // Close the pop-up immediately
+        // --- PKCE & CRYPTO HELPER FUNCTIONS ---
+        function generateRandomString(length = 64) {
+            const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+            const values = new Uint8Array(length);
+            crypto.getRandomValues(values);
+            return Array.from(values).map(x => possible[x % possible.length]).join('');
         }
 
-        // 2. Main Dashboard Logic
-        document.getElementById('launchBtn').addEventListener('click', () => {
+        async function sha256(plain) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(plain);
+            return crypto.subtle.digest('SHA-256', data);
+        }
+
+        function base64urlencode(a) {
+            return btoa(String.fromCharCode(...new Uint8Array(a)))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        async function generateCodeChallenge(verifier) {
+            const hashed = await sha256(verifier);
+            return base64urlencode(hashed);
+        }
+
+        // --- 1. POPUP CALLBACK HANDLER ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const returnedState = urlParams.get('state');
+        
+        if (code) {
+            const savedState = sessionStorage.getItem('fhir_state');
+            
+            if (returnedState && returnedState === savedState) {
+                if (window.opener) {
+                    window.opener.postMessage({ type: 'AUTH_CODE', code: code }, window.location.origin);
+                    window.close();
+                }
+            } else {
+                alert("Security Error: State mismatch detected. Request aborted.");
+                window.close();
+            }
+        }
+
+        // --- 2. MAIN DASHBOARD LAUNCH LOGIC ---
+        document.getElementById('launchBtn').addEventListener('click', async () => {
             log("Initiating Standalone Launch...");
             
-            // Construct FHIR standalone launch URL
-            const scope = encodeURIComponent('launch/standalone patient/*.read appointment/*.read');
-            const fullAuthUrl = `${AUTH_URL}?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scope}&aud=${encodeURIComponent(FHIR_BASE_URL)}`;
+            // Generate cryptographically secure state & PKCE values
+            const state = generateRandomString(32);
+            const codeVerifier = generateRandomString(64);
+            const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+            // Persist state & verifier for callback/exchange steps
+            sessionStorage.setItem('fhir_state', state);
+            sessionStorage.setItem('fhir_code_verifier', codeVerifier);
+
+            const scope = 'openid fhirUser launch/standalone patient/*.read appointment/*.read';
+            
+            const params = new URLSearchParams({
+                response_type: 'code',
+                client_id: CLIENT_ID,
+                redirect_uri: REDIRECT_URI,
+                state: state,
+                scope: scope,
+                aud: FHIR_BASE_URL,
+                code_challenge: codeChallenge,
+                code_challenge_method: 'S256'
+            });
+
+            const fullAuthUrl = `${AUTH_URL}?${params.toString()}`;
             
             log("Opening secure authentication pop-up...");
-            // Open the login flow in a pop-up window
             window.open(fullAuthUrl, 'FHIR Auth', 'width=600,height=700');
         });
 
-        // 3. Listen for the token/code from the pop-up
+        // --- 3. RECEIVE CALLBACK & EXCHANGE TOKEN ---
         window.addEventListener('message', async (event) => {
             if (event.origin !== window.location.origin) return;
             
@@ -68,30 +124,69 @@
                 log("Authorization code received successfully!");
                 log("Exchanging code for Access Token...");
                 
-                // Perform your fetch() POST request here to exchange code for token
-                // For demonstration efficiency, assume we have the token:
-                const token = "mock_token_or_returned_token"; 
-                
-                log("Fetching Appointment resources from FHIR server...");
-                fetchAppointments(token);
+                try {
+                    const tokenData = await exchangeCodeForToken(event.data.code);
+                    log("Access Token acquired!");
+                    
+                    log("Fetching Appointment resources from FHIR server...");
+                    fetchAppointments(tokenData.access_token);
+                } catch (err) {
+                    log(`Token Exchange Failed: ${err.message}`);
+                }
             }
         });
 
+        async function exchangeCodeForToken(authCode) {
+            const codeVerifier = sessionStorage.getItem('fhir_code_verifier');
+            
+            const bodyParams = new URLSearchParams({
+                grant_type: 'authorization_code',
+                code: authCode,
+                redirect_uri: REDIRECT_URI,
+                client_id: CLIENT_ID,
+                code_verifier: codeVerifier
+            });
+
+            const response = await fetch(TOKEN_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: bodyParams
+            });
+
+            if (!response.ok) {
+                const errBody = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errBody}`);
+            }
+
+            return await response.json();
+        }
+
         function log(message) {
             const div = document.getElementById('logs');
-            div.innerHTML += `<br> [${new Date().toLocaleTimeString()}] ${message}`;
+            div.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${message}</div>`;
+            div.scrollTop = div.scrollHeight;
         }
 
         async function fetchAppointments(token) {
             try {
-                // In production, add Authorization header: Bearer token
-                const response = await fetch(`${FHIR_BASE_URL}/Appointment?_count=3`);
-                const data = await response.json();
+                const response = await fetch(`${FHIR_BASE_URL}/Appointment?_count=3`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/fhir+json'
+                    }
+                });
                 
+                if (!response.ok) {
+                    throw new Error(`Server returned status ${response.status}`);
+                }
+
+                const data = await response.json();
                 log("Success! Appointments retrieved.");
                 document.getElementById('fhirData').textContent = JSON.stringify(data, null, 2);
             } catch (err) {
-                log("Error fetching FHIR data.");
+                log(`Error fetching FHIR data: ${err.message}`);
             }
         }
     </script>
