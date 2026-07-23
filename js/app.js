@@ -25,22 +25,18 @@ let currentAccessToken = '';
     const code = urlParams.get('code');
     const returnedState = urlParams.get('state');
 
-    if (code) {
-        if (window.opener) {
-            // Send code and state back to main dashboard window
-            window.opener.postMessage({ 
-                type: 'AUTH_CODE', 
-                code: code, 
-                state: returnedState 
-            }, window.location.origin);
-            window.close();
-        }
+    if (code && window.opener) {
+        window.opener.postMessage({ 
+            type: 'AUTH_CODE', 
+            code: code, 
+            state: returnedState 
+        }, window.location.origin);
+        window.close();
     }
 })();
 
 // --- 2. MAIN APPLICATION LOGIC ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Safety check for CONFIG
     if (typeof CONFIG === 'undefined') {
         log("CRITICAL ERROR: 'CONFIG' is not defined. Ensure js/config.js is loaded before js/app.js in index.html!");
         return;
@@ -54,7 +50,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelFhirBtn = document.getElementById('cancelFhirBtn');
     const confirmFhirFetchBtn = document.getElementById('confirmFhirFetchBtn');
 
-    // Safe DOM value getters/setters
     const getVal = (id) => document.getElementById(id)?.value || '';
     const setVal = (id, val) => {
         const el = document.getElementById(id);
@@ -78,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fullUrlEl) fullUrlEl.textContent = pendingAuthUrl;
     }
 
-    // Attach dynamic typing listeners to pre-flight inputs
     document.querySelectorAll('.param-input').forEach(input => {
         input.addEventListener('input', updatePreviewUrl);
     });
@@ -104,26 +98,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (modal) {
                 modal.classList.add('active');
                 log("Pre-flight screen displayed. Edit fields as needed.");
-            } else {
-                log("ERROR: Couldn't find element with id='preflightModal' in index.html");
             }
         } catch (err) {
             log(`RUNTIME ERROR: ${err.message}`);
         }
     });
 
-    // Pre-Flight Modal -> Cancel
     cancelModalBtn?.addEventListener('click', () => {
         document.getElementById('preflightModal')?.classList.remove('active');
         log("Launch canceled by user.");
     });
 
-    // Pre-Flight Modal -> Confirm & Launch Auth Popup Window
     confirmLaunchBtn?.addEventListener('click', () => {
         try {
             const currentState = getVal('m-state');
             sessionStorage.setItem('fhir_state', currentState);
-
             updatePreviewUrl();
 
             document.getElementById('preflightModal')?.classList.remove('active');
@@ -134,45 +123,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Step 2/3 Modal -> Abort Exchange
     cancelCodeBtn?.addEventListener('click', () => {
         document.getElementById('codeModal')?.classList.remove('active');
-        log("Token exchange aborted by user. Code was captured but not exchanged.");
+        log("Token exchange aborted by user.");
     });
 
-    // Step 3 Confirmation -> Perform Token Exchange & Transition to Step 4 Pre-Flight
+    // STEP 3: Confirm Token Exchange -> Open Step 4 Modal
     confirmTokenExchangeBtn?.addEventListener('click', async () => {
         document.getElementById('codeModal')?.classList.remove('active');
-        
         log("Proceeding to Step 3: Exchanging authorization code for Access Token...");
 
         try {
             const tokenData = await exchangeCodeForToken();
             log("Success! Access Token acquired.");
 
-            // Store acquired token globally
             currentAccessToken = tokenData.access_token;
-
-            // Extract context patient ID returned by Epic
-            const patientId = tokenData.patient || '';
-            if (patientId) {
-                log(`Context Patient ID acquired: ${patientId}`);
-            }
-
-            // Populate Step 4 FHIR Inspection Modal
-            const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
             setVal('m-bearer-token', currentAccessToken);
-            setVal('m-fhir-patient-id', patientId);
 
-            // Construct default target FHIR endpoint URL
-            const defaultEndpoint = patientId 
-                ? `${fhirBaseUrl}/Appointment?patient=${patientId}` 
-                : `${fhirBaseUrl}/Patient`;
-            setVal('m-fhir-endpoint', defaultEndpoint);
+            // Dynamically updates Stage 1 Preview using Patient?identifier={id}
+            function updatePatientSearchPreview() {
+                const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
+                const identifier = getVal('m-search-identifier');
 
-            // Function to render raw HTTP GET Request preview for Step 4
-            function updateFhirGetPreview() {
-                const targetUrl = getVal('m-fhir-endpoint');
+                const targetUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
                 const token = getVal('m-bearer-token');
 
                 const rawHttpGetText = 
@@ -181,43 +154,79 @@ Host: fhir.epic.com
 Authorization: Bearer ${token}
 Accept: application/fhir+json`;
 
-                const previewEl = document.getElementById('m-fhir-get-preview');
+                const previewEl = document.getElementById('m-fhir-patient-search-preview');
                 if (previewEl) previewEl.textContent = rawHttpGetText;
             }
 
-            // Attach dynamic typing listeners to Step 4 inputs
-            ['m-fhir-endpoint', 'm-fhir-patient-id', 'm-bearer-token'].forEach(id => {
-                document.getElementById(id)?.addEventListener('input', updateFhirGetPreview);
+            // Attach dynamic typing listeners
+            ['m-search-identifier', 'm-bearer-token'].forEach(id => {
+                document.getElementById(id)?.addEventListener('input', updatePatientSearchPreview);
             });
 
-            updateFhirGetPreview();
+            updatePatientSearchPreview();
 
-            // Open Step 4 Modal and PAUSE
+            // Open Step 4 Modal & PAUSE
             const fhirModal = document.getElementById('fhirModal');
             if (fhirModal) {
                 fhirModal.classList.add('active');
-                log("PAUSED at Step 4: Inspect Bearer Token and outgoing GET request prior to fetching FHIR resources.");
+                log("PAUSED at Step 4: Review Patient Identifier lookup parameters and Bearer token.");
             }
         } catch (err) {
             log(`Token Exchange Failed: ${err.message}`);
         }
     });
 
-    // Step 4 Modal -> Abort
     cancelFhirBtn?.addEventListener('click', () => {
         document.getElementById('fhirModal')?.classList.remove('active');
         log("FHIR query aborted by user.");
     });
 
-    // Step 4 Modal -> Execute Final FHIR API GET Request
+    // STEP 4: Execute Patient Search by Identifier -> Extract Patient ID -> Fetch Appointments
     confirmFhirFetchBtn?.addEventListener('click', async () => {
         document.getElementById('fhirModal')?.classList.remove('active');
         
-        const targetEndpoint = getVal('m-fhir-endpoint');
+        const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
         const token = getVal('m-bearer-token');
+        const identifier = getVal('m-search-identifier');
 
-        log(`Sending Authorized FHIR Request to ${targetEndpoint}...`);
-        fetchFhirResource(targetEndpoint, token);
+        if (!identifier) {
+            log("ERROR: Patient Identifier is required for lookup.");
+            return;
+        }
+
+        // Exact query format: Patient?identifier=1234
+        const patientSearchUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
+
+        try {
+            // Stage 1: Perform Patient Search
+            log(`Stage 1: Searching for Patient via ${patientSearchUrl}...`);
+            const bundle = await fetchFhirResource(patientSearchUrl, token);
+
+            if (!bundle.entry || bundle.entry.length === 0) {
+                throw new Error(`No patient found matching identifier '${identifier}'.`);
+            }
+
+            // Stage 2: Extract FHIR Patient ID from Bundle entry
+            const patientResource = bundle.entry[0].resource;
+            const patientFhirId = patientResource.id;
+            const patientNameText = patientResource.name?.[0]?.text || "Patient";
+            
+            log(`Success! Patient found: ${patientNameText} (Extracted FHIR ID: ${patientFhirId})`);
+
+            // Execute Appointment Query with Extracted Patient ID
+            const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${patientFhirId}`;
+            log(`Stage 2: Fetching Appointments using extracted FHIR ID via ${appointmentUrl}...`);
+            
+            const appointmentData = await fetchFhirResource(appointmentUrl, token);
+            log("Success! Appointment resources retrieved from Epic.");
+
+            const container = document.getElementById('fhirData');
+            if (container) {
+                container.textContent = JSON.stringify(appointmentData, null, 2);
+            }
+        } catch (err) {
+            log(`Error during FHIR workflow: ${err.message}`);
+        }
     });
 });
 
@@ -229,10 +238,9 @@ window.addEventListener('message', (event) => {
         const { code, state } = event.data;
         const savedState = sessionStorage.getItem('fhir_state');
 
-        // 1. Verify CSRF State
         if (!state || state !== savedState) {
-            log("Security Error: State mismatch detected. Request aborted.");
-            alert("Security Error: State mismatch detected. Request aborted.");
+            log("Security Error: CSRF State mismatch detected! Request aborted.");
+            alert("Security Error: CSRF State mismatch detected.");
             return;
         }
 
@@ -240,7 +248,6 @@ window.addEventListener('message', (event) => {
 
         capturedAuthCode = code;
 
-        // 2. Extract values from Step 1 config/edits
         const redirectUri = document.getElementById('m-redirect-uri')?.value || CONFIG.REDIRECT_URI;
         const clientId = document.getElementById('m-client-id')?.value || CONFIG.CLIENT_ID;
 
@@ -249,7 +256,6 @@ window.addEventListener('message', (event) => {
             if (el) el.value = val || '';
         };
 
-        // 3. Populate Step 3 Modal Inputs
         setVal('m-returned-state', state);
         setVal('m-token-endpoint', CONFIG.TOKEN_URL);
         setVal('m-grant-type', 'authorization_code');
@@ -257,7 +263,6 @@ window.addEventListener('message', (event) => {
         setVal('m-step3-redirect-uri', redirectUri);
         setVal('m-step3-client-id', clientId);
 
-        // 4. Live update function for HTTP POST request preview box
         function updatePostPreview() {
             const endpoint = document.getElementById('m-token-endpoint')?.value || CONFIG.TOKEN_URL;
             const bodyParams = new URLSearchParams({
@@ -279,25 +284,22 @@ ${bodyParams.toString()}`;
             if (previewEl) previewEl.textContent = rawHttpPostText;
         }
 
-        // Attach listeners to Step 3 fields
         ['m-token-endpoint', 'm-grant-type', 'm-auth-code', 'm-step3-redirect-uri', 'm-step3-client-id'].forEach((id) => {
             document.getElementById(id)?.addEventListener('input', updatePostPreview);
         });
 
         updatePostPreview();
 
-        // 5. Open Step 2/3 Inspection Modal & PAUSE
         const codeModal = document.getElementById('codeModal');
         if (codeModal) {
             codeModal.classList.add('active');
-            log("Authorization code displayed for inspection. Review token request payload before proceeding.");
+            log("PAUSED before Step 3. Review token exchange payload parameters.");
         }
     }
 });
 
 // --- 4. STEP 3 & STEP 4 API CALLS ---
 async function exchangeCodeForToken() {
-    // Read exact user-edited values from Step 3 Modal
     const tokenEndpoint = document.getElementById('m-token-endpoint')?.value || CONFIG.TOKEN_URL;
     const grantType = document.getElementById('m-grant-type')?.value || 'authorization_code';
     const code = document.getElementById('m-auth-code')?.value || capturedAuthCode;
@@ -329,27 +331,17 @@ async function exchangeCodeForToken() {
 }
 
 async function fetchFhirResource(targetUrl, token) {
-    try {
-        const response = await fetch(targetUrl, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/fhir+json'
-            }
-        });
-
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errText}`);
+    const response = await fetch(targetUrl, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/fhir+json'
         }
+    });
 
-        const data = await response.json();
-        log("Success! FHIR resource data retrieved.");
-        
-        const container = document.getElementById('fhirData');
-        if (container) {
-            container.textContent = JSON.stringify(data, null, 2);
-        }
-    } catch (err) {
-        log(`Error fetching FHIR resource: ${err.message}`);
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errText}`);
     }
+
+    return await response.json();
 }
