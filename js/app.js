@@ -1,4 +1,4 @@
-// --- RANDOM STRING GENERATOR (For State) ---
+// --- RANDOM STRING GENERATOR (For CSRF State) ---
 function generateRandomString(length = 32) {
     const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
     const values = new Uint8Array(length);
@@ -14,7 +14,11 @@ function log(message) {
     div.scrollTop = div.scrollHeight;
 }
 
-// --- 1. CALLBACK HANDLER (Runs inside the Popup when redirected back) ---
+// Global variables to store auth values between steps
+let capturedAuthCode = '';
+let pendingAuthUrl = '';
+
+// --- 1. CALLBACK HANDLER (Runs inside Pop-up when redirected back) ---
 (function handleCallback() {
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
@@ -22,7 +26,7 @@ function log(message) {
 
     if (code) {
         if (window.opener) {
-            // Send BOTH code and returnedState back to the main window for validation
+            // Send code and state back to main dashboard window
             window.opener.postMessage({ 
                 type: 'AUTH_CODE', 
                 code: code, 
@@ -34,17 +38,28 @@ function log(message) {
 })();
 
 // --- 2. MAIN APPLICATION LOGIC ---
-let pendingAuthUrl = '';
-
 document.addEventListener('DOMContentLoaded', () => {
+    // Safety check for CONFIG
+    if (typeof CONFIG === 'undefined') {
+        log("CRITICAL ERROR: 'CONFIG' is not defined. Ensure js/config.js is loaded before js/app.js in index.html!");
+        return;
+    }
+
     const launchBtn = document.getElementById('launchBtn');
     const cancelModalBtn = document.getElementById('cancelModalBtn');
     const confirmLaunchBtn = document.getElementById('confirmLaunchBtn');
+    const cancelCodeBtn = document.getElementById('cancelCodeBtn');
+    const confirmTokenExchangeBtn = document.getElementById('confirmTokenExchangeBtn');
 
-    // Helper function to build URL live from input fields safely
+    // Safe DOM value getters/setters
+    const getVal = (id) => document.getElementById(id)?.value || '';
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || '';
+    };
+
+    // Helper to update Preview GET Request URL live
     function updatePreviewUrl() {
-        const getVal = (id) => document.getElementById(id)?.value || '';
-        
         const endpoint = getVal('m-endpoint');
         const params = new URLSearchParams({
             response_type: 'code',
@@ -60,24 +75,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fullUrlEl) fullUrlEl.textContent = pendingAuthUrl;
     }
 
-    // Bind real-time input change listeners
+    // Attach dynamic typing listeners to pre-flight inputs
     document.querySelectorAll('.param-input').forEach(input => {
         input.addEventListener('input', updatePreviewUrl);
     });
 
-    // Trigger Pre-Flight Screen
+    // STEP 1: Trigger Button -> Open Pre-Flight Modal
     launchBtn?.addEventListener('click', () => {
         try {
             log("Generating authorization parameters...");
 
             const state = generateRandomString(32);
             sessionStorage.setItem('fhir_state', state);
-
-            // Safely set inputs
-            const setVal = (id, val) => {
-                const el = document.getElementById(id);
-                if (el) el.value = val;
-            };
 
             setVal('m-endpoint', CONFIG.AUTH_URL);
             setVal('m-client-id', CONFIG.CLIENT_ID);
@@ -93,62 +102,96 @@ document.addEventListener('DOMContentLoaded', () => {
                 modal.classList.add('active');
                 log("Pre-flight screen displayed. Edit fields as needed.");
             } else {
-                log("Error: #preflightModal element not found in HTML.");
+                log("ERROR: Couldn't find element with id='preflightModal' in index.html");
             }
         } catch (err) {
-            log(`JavaScript Error: ${err.message}`);
+            log(`RUNTIME ERROR: ${err.message}`);
         }
     });
 
-    // Cancel Button
+    // Pre-Flight Modal -> Cancel
     cancelModalBtn?.addEventListener('click', () => {
         document.getElementById('preflightModal')?.classList.remove('active');
         log("Launch canceled by user.");
     });
 
-    // Confirm & Open Popup
+    // Pre-Flight Modal -> Confirm & Launch Auth Popup Window
     confirmLaunchBtn?.addEventListener('click', () => {
-        const currentState = document.getElementById('m-state')?.value || '';
-        sessionStorage.setItem('fhir_state', currentState);
+        try {
+            // Save state in case the user edited it manually
+            const currentState = getVal('m-state');
+            sessionStorage.setItem('fhir_state', currentState);
 
-        updatePreviewUrl();
+            updatePreviewUrl();
 
-        document.getElementById('preflightModal')?.classList.remove('active');
-        log("Opening secure authentication pop-up...");
-        window.open(pendingAuthUrl, 'FHIR Auth', 'width=600,height=700');
-    });
-});
-
-// --- 3. LISTEN FOR AUTH CODE & EXCHANGE FOR TOKEN ---
-window.addEventListener('message', async (event) => {
-    if (event.origin !== window.location.origin) return;
-
-    if (event.data.type === 'AUTH_CODE') {
-        const { code, state } = event.data;
-        const savedState = sessionStorage.getItem('fhir_state');
-
-        // State verification happens HERE in the parent window!
-        if (!state || state !== savedState) {
-            log("Security Error: State mismatch detected. Request aborted.");
-            alert("Security Error: State mismatch detected. Request aborted.");
-            return;
+            document.getElementById('preflightModal')?.classList.remove('active');
+            log("Opening secure authentication pop-up...");
+            window.open(pendingAuthUrl, 'FHIR Auth', 'width=600,height=700');
+        } catch (err) {
+            log(`LAUNCH ERROR: ${err.message}`);
         }
+    });
 
-        log("Authorization code received and state verified!");
-        log("Exchanging authorization code for Access Token...");
+    // Step 2 Modal -> Abort Exchange
+    cancelCodeBtn?.addEventListener('click', () => {
+        document.getElementById('codeModal')?.classList.remove('active');
+        log("Token exchange aborted by user. Code was captured but not exchanged.");
+    });
+
+    // Step 2 Modal -> Confirm Exchange -> Proceed to Step 3 (Token Exchange)
+    confirmTokenExchangeBtn?.addEventListener('click', async () => {
+        document.getElementById('codeModal')?.classList.remove('active');
+        
+        log("Proceeding to Step 3: Exchanging authorization code for Access Token...");
 
         try {
-            const tokenData = await exchangeCodeForToken(code);
-            log("Access Token acquired!");
+            const tokenData = await exchangeCodeForToken(capturedAuthCode);
+            log("Success! Access Token acquired.");
 
             log("Fetching Appointment resources from FHIR server...");
             fetchAppointments(tokenData.access_token);
         } catch (err) {
             log(`Token Exchange Failed: ${err.message}`);
         }
+    });
+});
+
+// --- 3. LISTEN FOR AUTH CODE & INTERCEPT BEFORE STEP 3 ---
+window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+
+    if (event.data.type === 'AUTH_CODE') {
+        const { code, state } = event.data;
+        const savedState = sessionStorage.getItem('fhir_state');
+
+        // 1. Verify CSRF State
+        if (!state || state !== savedState) {
+            log("Security Error: State mismatch detected. Request aborted.");
+            alert("Security Error: State mismatch detected. Request aborted.");
+            return;
+        }
+
+        log("Step 2 Complete: Authorization Code captured successfully!");
+
+        // 2. Store code temporarily and populate Step 2 modal
+        capturedAuthCode = code;
+        
+        const returnedStateInput = document.getElementById('m-returned-state');
+        const authCodeInput = document.getElementById('m-auth-code');
+        const codeModal = document.getElementById('codeModal');
+
+        if (returnedStateInput) returnedStateInput.value = state;
+        if (authCodeInput) authCodeInput.value = code;
+
+        // 3. Open Code Inspection Modal (Pauses before Step 3)
+        if (codeModal) {
+            codeModal.classList.add('active');
+            log("Authorization code displayed for inspection. Awaiting manual trigger to exchange for token.");
+        }
     }
 });
 
+// --- 4. STEP 3 API CALLS ---
 async function exchangeCodeForToken(authCode) {
     const clientId = document.getElementById('m-client-id')?.value || CONFIG.CLIENT_ID;
     const redirectUri = document.getElementById('m-redirect-uri')?.value || CONFIG.REDIRECT_URI;
