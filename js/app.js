@@ -21,15 +21,13 @@ function log(message) {
     const returnedState = urlParams.get('state');
 
     if (code) {
-        const savedState = sessionStorage.getItem('fhir_state');
-
-        if (returnedState && returnedState === savedState) {
-            if (window.opener) {
-                window.opener.postMessage({ type: 'AUTH_CODE', code: code }, window.location.origin);
-                window.close();
-            }
-        } else {
-            alert("Security Error: State mismatch detected. Request aborted.");
+        if (window.opener) {
+            // Send BOTH code and returnedState back to the main window for validation
+            window.opener.postMessage({ 
+                type: 'AUTH_CODE', 
+                code: code, 
+                state: returnedState 
+            }, window.location.origin);
             window.close();
         }
     }
@@ -43,67 +41,79 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelModalBtn = document.getElementById('cancelModalBtn');
     const confirmLaunchBtn = document.getElementById('confirmLaunchBtn');
 
-    // Helper function to build URL live from input fields
+    // Helper function to build URL live from input fields safely
     function updatePreviewUrl() {
-        const endpoint = document.getElementById('m-endpoint').value;
+        const getVal = (id) => document.getElementById(id)?.value || '';
         
+        const endpoint = getVal('m-endpoint');
         const params = new URLSearchParams({
             response_type: 'code',
-            client_id: document.getElementById('m-client-id').value,
-            redirect_uri: document.getElementById('m-redirect-uri').value,
-            state: document.getElementById('m-state').value,
-            scope: document.getElementById('m-scope').value,
-            aud: document.getElementById('m-aud').value
+            client_id: getVal('m-client-id'),
+            redirect_uri: getVal('m-redirect-uri'),
+            state: getVal('m-state'),
+            scope: getVal('m-scope'),
+            aud: getVal('m-aud')
         });
 
         pendingAuthUrl = `${endpoint}?${params.toString()}`;
-        document.getElementById('m-full-url').textContent = pendingAuthUrl;
+        const fullUrlEl = document.getElementById('m-full-url');
+        if (fullUrlEl) fullUrlEl.textContent = pendingAuthUrl;
     }
 
-    // Bind real-time input change listeners so URL preview updates dynamically
+    // Bind real-time input change listeners
     document.querySelectorAll('.param-input').forEach(input => {
         input.addEventListener('input', updatePreviewUrl);
     });
 
     // Trigger Pre-Flight Screen
-    launchBtn.addEventListener('click', () => {
-        log("Generating authorization parameters...");
+    launchBtn?.addEventListener('click', () => {
+        try {
+            log("Generating authorization parameters...");
 
-        const state = generateRandomString(32);
-        sessionStorage.setItem('fhir_state', state);
+            const state = generateRandomString(32);
+            sessionStorage.setItem('fhir_state', state);
 
-        // Populate editable input fields with default config values
-        document.getElementById('m-endpoint').value = CONFIG.AUTH_URL;
-        document.getElementById('m-client-id').value = CONFIG.CLIENT_ID;
-        document.getElementById('m-redirect-uri').value = CONFIG.REDIRECT_URI;
-        document.getElementById('m-aud').value = CONFIG.FHIR_BASE_URL;
-        document.getElementById('m-state').value = state;
-        document.getElementById('m-scope').value = CONFIG.SCOPES;
+            // Safely set inputs
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.value = val;
+            };
 
-        // Render initial URL preview
-        updatePreviewUrl();
+            setVal('m-endpoint', CONFIG.AUTH_URL);
+            setVal('m-client-id', CONFIG.CLIENT_ID);
+            setVal('m-redirect-uri', CONFIG.REDIRECT_URI);
+            setVal('m-aud', CONFIG.FHIR_BASE_URL);
+            setVal('m-state', state);
+            setVal('m-scope', CONFIG.SCOPES);
 
-        // Display Modal
-        document.getElementById('preflightModal').classList.add('active');
-        log("Pre-flight screen displayed. Edit fields as needed.");
+            updatePreviewUrl();
+
+            const modal = document.getElementById('preflightModal');
+            if (modal) {
+                modal.classList.add('active');
+                log("Pre-flight screen displayed. Edit fields as needed.");
+            } else {
+                log("Error: #preflightModal element not found in HTML.");
+            }
+        } catch (err) {
+            log(`JavaScript Error: ${err.message}`);
+        }
     });
 
     // Cancel Button
-    cancelModalBtn.addEventListener('click', () => {
-        document.getElementById('preflightModal').classList.remove('active');
+    cancelModalBtn?.addEventListener('click', () => {
+        document.getElementById('preflightModal')?.classList.remove('active');
         log("Launch canceled by user.");
     });
 
     // Confirm & Open Popup
-    confirmLaunchBtn.addEventListener('click', () => {
-        // Sync sessionStorage in case the user manually edited the 'state' input
-        const currentState = document.getElementById('m-state').value;
+    confirmLaunchBtn?.addEventListener('click', () => {
+        const currentState = document.getElementById('m-state')?.value || '';
         sessionStorage.setItem('fhir_state', currentState);
 
-        // Final URL sync
         updatePreviewUrl();
 
-        document.getElementById('preflightModal').classList.remove('active');
+        document.getElementById('preflightModal')?.classList.remove('active');
         log("Opening secure authentication pop-up...");
         window.open(pendingAuthUrl, 'FHIR Auth', 'width=600,height=700');
     });
@@ -114,11 +124,21 @@ window.addEventListener('message', async (event) => {
     if (event.origin !== window.location.origin) return;
 
     if (event.data.type === 'AUTH_CODE') {
-        log("Authorization code received!");
+        const { code, state } = event.data;
+        const savedState = sessionStorage.getItem('fhir_state');
+
+        // State verification happens HERE in the parent window!
+        if (!state || state !== savedState) {
+            log("Security Error: State mismatch detected. Request aborted.");
+            alert("Security Error: State mismatch detected. Request aborted.");
+            return;
+        }
+
+        log("Authorization code received and state verified!");
         log("Exchanging authorization code for Access Token...");
 
         try {
-            const tokenData = await exchangeCodeForToken(event.data.code);
+            const tokenData = await exchangeCodeForToken(code);
             log("Access Token acquired!");
 
             log("Fetching Appointment resources from FHIR server...");
@@ -130,7 +150,6 @@ window.addEventListener('message', async (event) => {
 });
 
 async function exchangeCodeForToken(authCode) {
-    // Uses the edited values from DOM if changed, otherwise falls back to CONFIG
     const clientId = document.getElementById('m-client-id')?.value || CONFIG.CLIENT_ID;
     const redirectUri = document.getElementById('m-redirect-uri')?.value || CONFIG.REDIRECT_URI;
 
