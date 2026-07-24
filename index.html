@@ -125,41 +125,89 @@
         </div>
     </div>
 
-  <div id="fhirModal" class="modal-overlay">
+  <!-- STEP 4: PATIENT SEARCH & APPOINTMENT FETCH MODAL -->
+
+<div id="fhirModal" class="modal-overlay">
+
   <div class="modal">
+
     <h2 class="modal-header">Step 4: Patient Context Lookup & FHIR Query</h2>
-    <p class="modal-subtext">
-      Since no patient context was bound during standalone launch, input search demographics or directly amend the query URL (e.g., add <code>_count</code> or <code>_include</code>):
+
+    <p style="font-size: 14px; color: #555;">
+
+      Since no patient context was bound during standalone launch, input search demographics to look up the patient's FHIR ID first:
+
     </p>
 
+
+
+    <!-- PATIENT DEMOGRAPHICS INPUTS (HARDCODED FOR TESTING) -->
+
     <table class="param-table">
+
       <tr>
-        <th>Patient Identifier</th>
+
+        <th>Patient Given/Family Name</th>
+
+        <td><input type="text" id="m-search-name" class="param-input" value="Hackett"></td>
+
+      </tr>
+
+      <tr>
+
+        <th>Date of Birth (YYYY-MM-DD)</th>
+
+        <td><input type="text" id="m-search-dob" class="param-input" value="1987-01-15"></td>
+
+      </tr>
+
+      <tr>
+
+        <th>Identifier (e.g. MRN)</th>
+
         <td><input type="text" id="m-search-identifier" class="param-input" value="AO13LGR893FNTX9"></td>
+
       </tr>
+
       <tr>
-        <th>Full Patient Search URL</th>
-        <td><input type="text" id="m-patient-query-url" class="param-input param-url-input"></td>
-      </tr>
-      <tr>
+
         <th>Bearer Access Token</th>
+
         <td><textarea id="m-bearer-token" class="param-input" rows="2" readonly></textarea></td>
+
       </tr>
+
     </table>
 
-    <h3 class="preview-title">Stage 1: Outgoing Patient Search HTTP Preview</h3>
-    <pre id="m-fhir-patient-search-preview" class="preview-box-patient"></pre>
 
-    <h3 class="preview-title">Stage 2: Constructed Appointment Query Preview</h3>
-    <p class="preview-caption">(Will populate automatically once Patient FHIR ID is extracted from the Bundle response)</p>
-    <pre id="m-fhir-appointment-preview" class="preview-box-appointment">Awaiting Patient Search execution...</pre>
+
+    <h3 style="margin-top: 15px; color: #0076d6;">Stage 1: Outgoing Patient Search Preview</h3>
+
+    <pre id="m-fhir-patient-search-preview" style="background: #1e1e1e; color: #4af626; padding: 10px; border-radius: 4px; font-size: 11px; font-family: monospace; white-space: pre-wrap; word-break: break-all;"></pre>
+
+
+
+    <h3 style="color: #0076d6;">Stage 2: Constructed Appointment Query Preview</h3>
+
+    <p style="font-size: 12px; color: #666; margin: 0 0 5px 0;">(Will populate automatically once Patient FHIR ID is extracted from the Bundle response)</p>
+
+    <pre id="m-fhir-appointment-preview" style="background: #1e1e1e; color: #38bdf8; padding: 10px; border-radius: 4px; font-size: 11px; font-family: monospace; white-space: pre-wrap; word-break: break-all;">Awaiting Patient Search execution...</pre>
+
+
 
     <div class="modal-actions">
+
       <button id="cancelFhirBtn" class="secondary">Abort Query</button>
+
       <button id="confirmFhirFetchBtn">Execute Patient Lookup & Fetch Appointments</button>
+
     </div>
+
   </div>
-</div>
+
+</div> 
+
+
 
     <!-- SCRIPT INCLUDES -->
     <script src="js/config.js"></script>
