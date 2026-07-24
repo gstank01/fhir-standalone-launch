@@ -1,18 +1,4 @@
-// --- RANDOM STRING GENERATOR (For CSRF State) ---
-function generateRandomString(length = 32) {
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    const values = new Uint8Array(length);
-    crypto.getRandomValues(values);
-    return Array.from(values).map(x => possible[x % possible.length]).join('');
-}
-
-// --- LOGGING HELPER ---
-function log(message) {
-    const div = document.getElementById('logs');
-    if (!div) return;
-    div.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${message}</div>`;
-    div.scrollTop = div.scrollHeight;
-}
+import { generateRandomString, log } from './utils.js';
 
 // Global variables to store auth values between steps
 let capturedAuthCode = '';
