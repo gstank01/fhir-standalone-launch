@@ -6,7 +6,7 @@ export function generateRandomString(length = 32) { //determine the length of th
     return Array.from(values).map(x => possible[x % possible.length]).join(''); //Map random bytes to characters and return the result
 }
 
-export // --- LOGGING HELPER ---
+// --- LOGGING HELPER ---
 function log(message) {
     const div = document.getElementById('logs');
     if (!div) return;
