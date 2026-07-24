@@ -1,8 +1,3 @@
-// Global variables to store auth values between steps
-let capturedAuthCode = '';
-let pendingAuthUrl = '';
-let currentAccessToken = '';
-
 // --- 1. CALLBACK HANDLER (Runs inside Pop-up when redirected back from EHR) ---
 (function handleCallback() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -52,7 +47,9 @@ document.addEventListener('DOMContentLoaded', () => {
             aud: getVal('m-aud')
         });
 
-        pendingAuthUrl = `${endpoint}?${params.toString()}`;
+        const pendingAuthUrl = `${endpoint}?${params.toString()}`;
+        AuthStore.setPendingAuthUrl(pendingAuthUrl);
+
         const fullUrlEl = document.getElementById('m-full-url');
         if (fullUrlEl) fullUrlEl.textContent = pendingAuthUrl;
     }
@@ -67,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
             log("Generating authorization parameters...");
 
             const state = generateRandomString(32);
-            sessionStorage.setItem('fhir_state', state);
+            AuthStore.setState(state);
 
             setVal('m-endpoint', CONFIG.AUTH_URL);
             setVal('m-client-id', CONFIG.CLIENT_ID);
@@ -96,12 +93,14 @@ document.addEventListener('DOMContentLoaded', () => {
     confirmLaunchBtn?.addEventListener('click', () => {
         try {
             const currentState = getVal('m-state');
-            sessionStorage.setItem('fhir_state', currentState);
+            AuthStore.setState(currentState);
             updatePreviewUrl();
 
             document.getElementById('preflightModal')?.classList.remove('active');
             log("Opening secure authentication pop-up...");
-            window.open(pendingAuthUrl, 'FHIR Auth', 'width=600,height=700');
+            
+            const authUrl = AuthStore.getPendingAuthUrl();
+            window.open(authUrl, 'FHIR Auth', 'width=600,height=700');
         } catch (err) {
             log(`LAUNCH ERROR: ${err.message}`);
         }
@@ -121,8 +120,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const tokenData = await exchangeCodeForToken();
             log("Success! Access Token acquired.");
 
-            currentAccessToken = tokenData.access_token;
-            setVal('m-bearer-token', currentAccessToken);
+            // Store in AuthStore & populate dynamic input element
+            AuthStore.setAccessToken(tokenData.access_token);
+            setVal('m-bearer-token', tokenData.access_token);
 
             // Dynamically updates Stage 1 Preview using Patient?identifier={id}
             function updatePatientSearchPreview() {
@@ -170,7 +170,7 @@ Accept: application/fhir+json`;
         document.getElementById('fhirModal')?.classList.remove('active');
         
         const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
-        const token = getVal('m-bearer-token');
+        const token = getVal('m-bearer-token') || AuthStore.getAccessToken();
         const identifier = getVal('m-search-identifier');
 
         if (!identifier) {
@@ -178,7 +178,6 @@ Accept: application/fhir+json`;
             return;
         }
 
-        // Exact query format: Patient?identifier=1234
         const patientSearchUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
 
         try {
@@ -220,17 +219,18 @@ window.addEventListener('message', (event) => {
 
     if (event.data && event.data.type === 'AUTH_CODE') {
         const { code, state } = event.data;
-        const savedState = sessionStorage.getItem('fhir_state');
+        const savedState = AuthStore.getState();
 
         if (!state || state !== savedState) {
             log("Security Error: CSRF State mismatch detected! Request aborted.");
             alert("Security Error: CSRF State mismatch detected.");
+            AuthStore.clearAll();
             return;
         }
 
         log("Step 2 Complete: Authorization Code captured successfully!");
 
-        capturedAuthCode = code;
+        AuthStore.setAuthCode(code);
 
         const redirectUri = document.getElementById('m-redirect-uri')?.value || CONFIG.REDIRECT_URI;
         const clientId = document.getElementById('m-client-id')?.value || CONFIG.CLIENT_ID;
@@ -286,7 +286,7 @@ ${bodyParams.toString()}`;
 async function exchangeCodeForToken() {
     const tokenEndpoint = document.getElementById('m-token-endpoint')?.value || CONFIG.TOKEN_URL;
     const grantType = document.getElementById('m-grant-type')?.value || 'authorization_code';
-    const code = document.getElementById('m-auth-code')?.value || capturedAuthCode;
+    const code = document.getElementById('m-auth-code')?.value || AuthStore.getAuthCode();
     const redirectUri = document.getElementById('m-step3-redirect-uri')?.value || CONFIG.REDIRECT_URI;
     const clientId = document.getElementById('m-step3-client-id')?.value || CONFIG.CLIENT_ID;
 
