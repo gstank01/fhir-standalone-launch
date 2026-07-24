@@ -1,5 +1,3 @@
-import { generateRandomString, log } from './utils.js';
-
 // Global variables to store auth values between steps
 let capturedAuthCode = '';
 let pendingAuthUrl = '';
