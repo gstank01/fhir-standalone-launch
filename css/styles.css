@@ -1,9 +1,16 @@
-/* Base Page Styling */
+/* ==========================================================================
+   1. BASE PAGE LAYOUT & CONTAINERS
+   ========================================================================== */
 body {
     font-family: system-ui, -apple-system, sans-serif;
     margin: 40px;
     background: #f4f6f9;
     color: #333;
+}
+
+h1 {
+    color: #0076d6;
+    margin-bottom: 20px;
 }
 
 .container {
@@ -19,7 +26,9 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* Buttons */
+/* ==========================================================================
+   2. BUTTONS & STATES
+   ========================================================================== */
 button {
     background: #0076d6;
     color: white;
@@ -43,12 +52,24 @@ button.secondary:hover {
     background: #5a6268;
 }
 
-button:disabled {
-    background: #a0c4e2;
-    cursor: not-allowed;
+button.success-btn {
+    background-color: #28a745;
 }
 
-/* Data Display & Logs */
+button.success-btn:hover {
+    background-color: #218838;
+}
+
+button:disabled {
+    background: #a0c4e2 !important;
+    color: #ffffff !important;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* ==========================================================================
+   3. LOGS & DATA DISPLAY PREVIEWS
+   ========================================================================== */
 pre {
     background: #272822;
     color: #f8f8f2;
@@ -70,7 +91,45 @@ pre {
     border-radius: 4px;
 }
 
-/* Pre-Flight Modal Styles */
+#fhirData {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    font-family: monospace;
+    padding: 12px;
+    height: 250px;
+    overflow-y: auto;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
+/* Stage 1 Outgoing Patient Search Preview */
+#m-fhir-patient-search-preview {
+    background: #1e1e1e;
+    color: #4af626;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Stage 2 Constructed Appointment Query Preview */
+#m-fhir-appointment-preview {
+    background: #1e1e1e;
+    color: #38bdf8;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* ==========================================================================
+   4. MODAL OVERLAYS & FORM TABLES
+   ========================================================================== */
 .modal-overlay {
     display: none;
     position: fixed;
@@ -93,6 +152,8 @@ pre {
     border-radius: 8px;
     max-width: 750px;
     width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
     padding: 25px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
@@ -101,6 +162,23 @@ pre {
     margin-top: 0;
     border-bottom: 2px solid #f4f6f9;
     padding-bottom: 10px;
+    color: #0076d6;
+}
+
+.modal-description {
+    font-size: 14px;
+    color: #555;
+}
+
+.stage-header {
+    margin-top: 15px;
+    color: #0076d6;
+}
+
+.stage-hint {
+    font-size: 12px;
+    color: #666;
+    margin: 0 0 5px 0;
 }
 
 .param-table {
@@ -121,6 +199,7 @@ pre {
     background-color: #f8f9fa;
     font-weight: 600;
     width: 30%;
+    color: #444;
 }
 
 .param-input {
@@ -147,38 +226,15 @@ pre {
     justify-content: flex-end;
 }
 
-/* Add to css/styles.css */
-
-/* Stage 1 Outgoing Patient Search Preview */
-#m-fhir-patient-search-preview {
-    background: #1e1e1e;
-    color: #4af626;
-    padding: 10px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-family: monospace;
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-/* Stage 2 Constructed Appointment Query Preview */
-#m-fhir-appointment-preview {
-    background: #1e1e1e;
-    color: #38bdf8;
-    padding: 10px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-family: monospace;
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-/* Inspection Popup Window Styling */
+/* ==========================================================================
+   5. INSPECTION POP-UP WINDOW STYLES
+   ========================================================================== */
 body.inspection-window-body {
     font-family: monospace;
     background-color: #1e1e1e;
     color: #d4d4d4;
     padding: 20px;
+    margin: 0;
 }
 
 body.inspection-window-body h2 {
@@ -205,5 +261,6 @@ body.inspection-window-body hr {
     font-size: 13px;
     white-space: pre-wrap;
     word-break: break-all;
+    background: #1e1e1e;
+    color: #d4d4d4;
 }
-
