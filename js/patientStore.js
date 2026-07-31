@@ -1,6 +1,6 @@
 // js/patientStore.js
 
-const INITIAL_PATIENTS = [
+const PATIENT_LIST = [
     {
         id: "RIS-101",
         identifier: "AO1QDN948FSHJXN", // Core lookup identifier (MRN / Patient ID)
@@ -17,14 +17,32 @@ const INITIAL_PATIENTS = [
         },
         modality: "CT Scan",
         studyStatus: "Scheduled",
-        localNotes: "Pre-op CT scan. Verified patient identifier 123445."
+        localNotes: "Pre-op CT scan. Verified patient identifier."
+    },
+    {
+        id: "RIS-102",
+        identifier: "TEST-MRN-002", // Replace with your second test patient identifier/MRN
+        name: "Test Patient Two",
+        given: "Test",
+        family: "Patient",
+        gender: "Male",
+        telecom: "608-555-0199",
+        address: {
+            street: "456 Oak Rd.",
+            city: "Madison",
+            state: "Wisconsin",
+            postalCode: "53705"
+        },
+        modality: "MRI Brain",
+        studyStatus: "Arrived",
+        localNotes: "Placeholder test patient for future pre-population."
     }
 ];
 
 const PatientStore = {
     init: function() {
         if (!localStorage.getItem('ris_patients')) {
-            localStorage.setItem('ris_patients', JSON.stringify(INITIAL_PATIENTS));
+            localStorage.setItem('ris_patients', JSON.stringify(PATIENT_LIST));
         }
     },
 
