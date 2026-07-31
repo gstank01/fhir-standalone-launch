@@ -3,7 +3,7 @@
 const INITIAL_PATIENTS = [
     {
         id: "RIS-101",
-        identifier: "AO13LGR893FNTX9", // Core lookup identifier (MRN / Patient ID)
+        identifier: "AO1QDN948FSHJXN", // Core lookup identifier (MRN / Patient ID)
         name: "Allison Mychart",
         given: "Allison",
         family: "Mychart",
