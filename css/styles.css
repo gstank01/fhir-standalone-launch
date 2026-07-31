@@ -264,3 +264,47 @@ body.inspection-window-body hr {
     background: #1e1e1e;
     color: #d4d4d4;
 }
+
+/* RIS Worklist & Patient Context Card */
+.worklist-selector-group {
+    margin-bottom: 15px;
+}
+
+.worklist-selector-group label {
+    display: block;
+    font-weight: bold;
+    font-size: 13px;
+    margin-bottom: 5px;
+    color: #444;
+}
+
+.worklist-dropdown {
+    width: 100%;
+    padding: 8px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #fff;
+}
+
+.patient-card {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-left: 4px solid #0076d6;
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.patient-card h3 {
+    margin: 0 0 6px 0;
+    font-size: 15px;
+    color: #0076d6;
+}
+
+.patient-card p {
+    margin: 2px 0;
+    color: #555;
+}
