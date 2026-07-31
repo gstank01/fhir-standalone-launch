@@ -1,4 +1,10 @@
-// This object provides clean, centralized helper methods to read, write, and clear authentication state in sessionStorage.
+// This object provides clean, centralised helper methods to read, write, and clear authentication state in sessionStorage.
+/**
+ * AuthStore: Centralised storage abstraction for OAuth2 / SMART on FHIR tokens & CSRF state.
+ * - Prevents string-typo bugs and standardises sessionStorage key management.
+ * - Persists transient auth values across OAuth popup redirects and workspace steps.
+ * - Provides clean cleanup (.clearAll()) for security resets and error handling.
+ */
 
 const AuthStore = {
     // --- Auth Code ---
