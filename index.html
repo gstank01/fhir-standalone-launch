@@ -151,18 +151,23 @@
         <th>Bearer Access Token</th>
         <td><textarea id="m-bearer-token" class="param-input" rows="2" readonly></textarea></td>
       </tr>
+      <tr>
+        <th>Extracted FHIR Logical ID</th>
+        <td><input type="text" id="m-extracted-patient-id" class="param-input" placeholder="Populates after Stage 1..." readonly></td>
+      </tr>
     </table>
 
     <h3 class="stage-header">Stage 1: Outgoing Patient Search Preview</h3>
-    <pre id="m-fhir-patient-search-preview"></pre>
+    <pre id="m-fhir-patient-search-preview" class="http-preview patient-preview"></pre>
 
     <h3 class="stage-header">Stage 2: Constructed Appointment Query Preview</h3>
     <p class="stage-hint">(Will populate automatically once Patient FHIR ID is extracted from the Bundle response)</p>
-    <pre id="m-fhir-appointment-preview">Awaiting Patient Search execution...</pre>
+    <pre id="m-fhir-appointment-preview" class="http-preview appt-preview">Awaiting Patient Search execution...</pre>
 
     <div class="modal-actions">
       <button id="cancelFhirBtn" class="secondary">Abort Query</button>
-      <button id="confirmFhirFetchBtn">Execute Patient Lookup & Fetch Appointments</button>
+      <button id="confirmPatientSearchBtn">1. Search & Inspect Patient</button>
+      <button id="confirmAppointmentFetchBtn" class="success-btn" disabled>2. Fetch Appointments</button>
     </div>
   </div>
 </div>
