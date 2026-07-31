@@ -89,6 +89,56 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.value = val || '';
     };
 
+    // --- RIS PATIENT WORKLIST INTEGRATION ---
+    if (typeof PatientStore !== 'undefined') {
+        PatientStore.init();
+
+        function renderWorklistUI() {
+            const selectEl = document.getElementById('worklistSelect');
+            const cardEl = document.getElementById('patientContextCard');
+            if (!selectEl) return;
+
+            const patients = PatientStore.getAllPatients();
+            const activePatient = PatientStore.getActivePatient();
+
+            // Populate dropdown menu
+            selectEl.innerHTML = '';
+            patients.forEach(patient => {
+                const opt = document.createElement('option');
+                opt.value = patient.id;
+                opt.textContent = `${patient.name} (${patient.identifier}) - ${patient.modality}`;
+                if (patient.id === activePatient.id) opt.selected = true;
+                selectEl.appendChild(opt);
+            });
+
+            // Populate summary card
+            if (cardEl && activePatient) {
+                cardEl.innerHTML = '';
+                
+                const h3 = document.createElement('h3');
+                h3.textContent = activePatient.name;
+                cardEl.appendChild(h3);
+
+                const pMRN = document.createElement('p');
+                pMRN.textContent = `Identifier / MRN: ${activePatient.identifier}`;
+                cardEl.appendChild(pMRN);
+
+                const pModality = document.createElement('p');
+                pModality.textContent = `Study: ${activePatient.modality} (${activePatient.studyStatus})`;
+                cardEl.appendChild(pModality);
+            }
+        }
+
+        // Change active patient on dropdown selection
+        document.getElementById('worklistSelect')?.addEventListener('change', (e) => {
+            PatientStore.setActivePatientId(e.target.value);
+            renderWorklistUI();
+            log(`Active RIS Patient switched to: ${PatientStore.getActivePatient().name}`);
+        });
+
+        renderWorklistUI();
+    }
+
     // Helper to update Step 1 GET Request Preview URL live
     function updatePreviewUrl() {
         const endpoint = getVal('m-endpoint');
@@ -112,9 +162,16 @@ document.addEventListener('DOMContentLoaded', () => {
         input.addEventListener('input', updatePreviewUrl);
     });
 
-    // STEP 1: Trigger Button -> Open Pre-Flight Modal
+    // STEP 1: Trigger Button -> Save Patient Context & Open Pre-Flight Modal
     launchBtn?.addEventListener('click', () => {
         try {
+            // Retrieve active patient from RIS Store and save context to session
+            if (typeof PatientStore !== 'undefined') {
+                const activePatient = PatientStore.getActivePatient();
+                AuthStore.setPatientContext(activePatient);
+                log(`Bound patient context: ${activePatient.name} (MRN: ${activePatient.identifier})`);
+            }
+
             log("Generating authorization parameters...");
 
             const state = generateRandomString(32);
@@ -165,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
         log("Token exchange aborted by user.");
     });
 
-    // STEP 3: Confirm Token Exchange -> Open Step 4 Modal
+    // STEP 3: Confirm Token Exchange -> Auto-Fill Patient Context & Open Step 4 Modal
     confirmTokenExchangeBtn?.addEventListener('click', async () => {
         document.getElementById('codeModal')?.classList.remove('active');
         log("Proceeding to Step 3: Exchanging authorization code for Access Token...");
@@ -177,6 +234,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // Store in AuthStore & populate dynamic input element
             AuthStore.setAccessToken(tokenData.access_token);
             setVal('m-bearer-token', tokenData.access_token);
+
+            // Auto-fill Step 4 lookup parameters using saved patient context
+            const patientContext = AuthStore.getPatientContext() || (typeof PatientStore !== 'undefined' ? PatientStore.getActivePatient() : null);
+            if (patientContext) {
+                setVal('m-search-name', patientContext.given || patientContext.name || '');
+                setVal('m-search-identifier', patientContext.identifier || '');
+                log(`Loaded patient context into Step 4: ${patientContext.name} (${patientContext.identifier})`);
+            }
 
             // Dynamically updates Stage 1 Preview using Patient?identifier={id}
             function updatePatientSearchPreview() {
