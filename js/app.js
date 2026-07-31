@@ -14,6 +14,59 @@
     }
 })();
 
+// --- Helper for opening raw JSON object in a popup window linking external CSS ---
+function openJsonInspectionWindow(title, rootId, jsonData) {
+    const jsonWindow = window.open("", title, "width=700,height=800,scrollbars=yes");
+    if (!jsonWindow) {
+        log("WARNING: Pop-up blocked! Allow pop-ups to inspect raw FHIR JSON.");
+        return;
+    }
+
+    const doc = jsonWindow.document;
+    doc.open();
+
+    const html = doc.createElement('html');
+    const head = doc.createElement('head');
+    
+    const titleEl = doc.createElement('title');
+    titleEl.textContent = title;
+    head.appendChild(titleEl);
+
+    // Link directly to external CSS file (no CSS in JS)
+    const linkEl = doc.createElement('link');
+    linkEl.rel = 'stylesheet';
+    linkEl.href = 'css/styles.css';
+    head.appendChild(linkEl);
+
+    const body = doc.createElement('body');
+    body.className = 'inspection-window-body';
+
+    const h2 = doc.createElement('h2');
+    h2.textContent = title;
+    body.appendChild(h2);
+
+    const p = doc.createElement('p');
+    p.appendChild(doc.createTextNode("Root id field value: "));
+    const span = doc.createElement('span');
+    span.className = 'highlight';
+    span.textContent = rootId || 'UNDEFINED';
+    p.appendChild(span);
+    body.appendChild(p);
+
+    body.appendChild(doc.createElement('hr'));
+
+    const pre = doc.createElement('pre');
+    pre.className = 'json-inspection-preview';
+    pre.textContent = JSON.stringify(jsonData, null, 2);
+    body.appendChild(pre);
+
+    html.appendChild(head);
+    html.appendChild(body);
+    doc.appendChild(html);
+
+    doc.close();
+}
+
 // --- 2. MAIN APPLICATION LOGIC ---
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof CONFIG === 'undefined') {
@@ -54,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fullUrlEl) fullUrlEl.textContent = pendingAuthUrl;
     }
 
-    document.querySelectorAll('.param-input').forEach(input => {
+    document.querySelectorAll('#preflightModal .param-input').forEach(input => {
         input.addEventListener('input', updatePreviewUrl);
     });
 
@@ -128,9 +181,9 @@ document.addEventListener('DOMContentLoaded', () => {
             function updatePatientSearchPreview() {
                 const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
                 const identifier = getVal('m-search-identifier');
+                const token = getVal('m-bearer-token');
 
                 const targetUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
-                const token = getVal('m-bearer-token');
 
                 const rawHttpGetText = 
 `GET ${targetUrl} HTTP/1.1
@@ -165,7 +218,7 @@ Accept: application/fhir+json`;
         log("FHIR query aborted by user.");
     });
 
-    // STEP 4: Execute Patient Search by Identifier -> Extract Patient ID -> Fetch Appointments
+    // STEP 4: Execute Patient Search -> Inspect in Window -> Sanitize ID -> Fetch Appointments
     confirmFhirFetchBtn?.addEventListener('click', async () => {
         document.getElementById('fhirModal')?.classList.remove('active');
         
@@ -189,17 +242,38 @@ Accept: application/fhir+json`;
                 throw new Error(`No patient found matching identifier '${identifier}'.`);
             }
 
-            // Stage 2: Extract FHIR Patient ID from Bundle entry
             const patientResource = bundle.entry[0].resource;
-            const patientFhirId = patientResource.id;
-            const patientNameText = patientResource.name?.[0]?.text || "Patient";
-            
-            log(`Success! Patient found: ${patientNameText} (Extracted FHIR ID: ${patientFhirId})`);
 
-            // Execute Appointment Query with Extracted Patient ID
-            const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${patientFhirId}`;
+            // --- Open Raw Patient Resource JSON in a new Popup Window for Inspection ---
+            openJsonInspectionWindow("Patient Resource Inspection", patientResource.id, patientResource);
+            log("Patient Resource opened in a new window for verification.");
+
+            // Stage 2: Extract & Sanitize FHIR Logical ID (strips "Patient/" if Epic returns relative reference)
+            let patientFhirId = patientResource.id || '';
+            if (patientFhirId.startsWith('Patient/')) {
+                patientFhirId = patientFhirId.replace('Patient/', '');
+            }
+
+            if (!patientFhirId || patientFhirId === 'undefined') {
+                throw new Error(`Extracted FHIR ID is invalid or undefined. Inspect the pop-up window to locate the correct ID.`);
+            }
+
+            const patientNameText = patientResource.name?.[0]?.text || "Patient";
+            log(`Success! Patient identified: ${patientNameText} (Extracted FHIR ID: ${patientFhirId})`);
+
+            // Update Stage 2 Preview Box Live in UI before executing
+            const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${encodeURIComponent(patientFhirId)}`;
+            const rawApptGet = 
+`GET ${appointmentUrl} HTTP/1.1
+Host: fhir.epic.com
+Authorization: Bearer ${token}
+Accept: application/fhir+json`;
+
+            const apptPreviewEl = document.getElementById('m-fhir-appointment-preview');
+            if (apptPreviewEl) apptPreviewEl.textContent = rawApptGet;
+
+            // Stage 3: Fetch Appointments using extracted FHIR ID
             log(`Stage 2: Fetching Appointments using extracted FHIR ID via ${appointmentUrl}...`);
-            
             const appointmentData = await fetchFhirResource(appointmentUrl, token);
             log("Success! Appointment resources retrieved from Epic.");
 
