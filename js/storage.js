@@ -23,6 +23,15 @@ const AuthStore = {
     getState: () => sessionStorage.getItem('fhir_state'),
     setState: (state) => sessionStorage.setItem('fhir_state', state),
 
+    // --- RIS Patient Context Session Helpers - store and retrieve the active patient context during session management
+    getPatientContext: () => {
+        const raw = sessionStorage.getItem('ris_active_patient_context');
+        return raw ? JSON.parse(raw) : null;
+    },
+    setPatientContext: (patientData) => {
+        sessionStorage.setItem('ris_active_patient_context', JSON.stringify(patientData));
+    },
+
     // --- Helper to clear everything on logout or error ---
     clearAll: () => {
         sessionStorage.removeItem('fhir_auth_code');
