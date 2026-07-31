@@ -80,7 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelCodeBtn = document.getElementById('cancelCodeBtn');
     const confirmTokenExchangeBtn = document.getElementById('confirmTokenExchangeBtn');
     const cancelFhirBtn = document.getElementById('cancelFhirBtn');
-    const confirmFhirFetchBtn = document.getElementById('confirmFhirFetchBtn');
+    const confirmPatientSearchBtn = document.getElementById('confirmPatientSearchBtn');
+    const confirmAppointmentFetchBtn = document.getElementById('confirmAppointmentFetchBtn');
 
     const getVal = (id) => document.getElementById(id)?.value || '';
     const setVal = (id, val) => {
@@ -218,10 +219,8 @@ Accept: application/fhir+json`;
         log("FHIR query aborted by user.");
     });
 
-    // STEP 4: Execute Patient Search -> Inspect in Window -> Sanitize ID -> Fetch Appointments
-    confirmFhirFetchBtn?.addEventListener('click', async () => {
-        document.getElementById('fhirModal')?.classList.remove('active');
-        
+    // ACTION 1: Execute Patient Search -> Open Window -> Extract ID -> PAUSE
+    confirmPatientSearchBtn?.addEventListener('click', async () => {
         const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
         const token = getVal('m-bearer-token') || AuthStore.getAccessToken();
         const identifier = getVal('m-search-identifier');
@@ -234,7 +233,6 @@ Accept: application/fhir+json`;
         const patientSearchUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
 
         try {
-            // Stage 1: Perform Patient Search
             log(`Stage 1: Searching for Patient via ${patientSearchUrl}...`);
             const bundle = await fetchFhirResource(patientSearchUrl, token);
 
@@ -244,24 +242,22 @@ Accept: application/fhir+json`;
 
             const patientResource = bundle.entry[0].resource;
 
-            // --- Open Raw Patient Resource JSON in a new Popup Window for Inspection ---
+            // 1. Open JSON inspection pop-up window
             openJsonInspectionWindow("Patient Resource Inspection", patientResource.id, patientResource);
-            log("Patient Resource opened in a new window for verification.");
+            log("Patient Resource opened in pop-up window. Inspect patientResource.id!");
 
-            // Stage 2: Extract & Sanitize FHIR Logical ID (strips "Patient/" if Epic returns relative reference)
+            // 2. Extract and sanitize FHIR ID
             let patientFhirId = patientResource.id || '';
             if (patientFhirId.startsWith('Patient/')) {
                 patientFhirId = patientFhirId.replace('Patient/', '');
             }
 
-            if (!patientFhirId || patientFhirId === 'undefined') {
-                throw new Error(`Extracted FHIR ID is invalid or undefined. Inspect the pop-up window to locate the correct ID.`);
-            }
+            setVal('m-extracted-patient-id', patientFhirId);
 
             const patientNameText = patientResource.name?.[0]?.text || "Patient";
-            log(`Success! Patient identified: ${patientNameText} (Extracted FHIR ID: ${patientFhirId})`);
+            log(`Stage 1 Success: Identified ${patientNameText} (Extracted ID: ${patientFhirId})`);
 
-            // Update Stage 2 Preview Box Live in UI before executing
+            // 3. Populate Stage 2 Preview Box on dashboard
             const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${encodeURIComponent(patientFhirId)}`;
             const rawApptGet = 
 `GET ${appointmentUrl} HTTP/1.1
@@ -272,8 +268,33 @@ Accept: application/fhir+json`;
             const apptPreviewEl = document.getElementById('m-fhir-appointment-preview');
             if (apptPreviewEl) apptPreviewEl.textContent = rawApptGet;
 
-            // Stage 3: Fetch Appointments using extracted FHIR ID
-            log(`Stage 2: Fetching Appointments using extracted FHIR ID via ${appointmentUrl}...`);
+            // 4. Enable Action 2 Button and PAUSE
+            if (confirmAppointmentFetchBtn) {
+                confirmAppointmentFetchBtn.disabled = false;
+            }
+            log("PAUSED: Verify Patient ID in pop-up window, then click '2. Fetch Appointments'.");
+        } catch (err) {
+            log(`Patient Search Error: ${err.message}`);
+        }
+    });
+
+    // ACTION 2: Fetch Appointments (Executes ONLY when user clicks Button 2)
+    confirmAppointmentFetchBtn?.addEventListener('click', async () => {
+        document.getElementById('fhirModal')?.classList.remove('active');
+
+        const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
+        const token = getVal('m-bearer-token') || AuthStore.getAccessToken();
+        const patientFhirId = getVal('m-extracted-patient-id');
+
+        if (!patientFhirId) {
+            log("ERROR: No extracted FHIR Patient ID found. Run Stage 1 search first.");
+            return;
+        }
+
+        const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${encodeURIComponent(patientFhirId)}`;
+
+        try {
+            log(`Stage 2: Fetching Appointments via ${appointmentUrl}...`);
             const appointmentData = await fetchFhirResource(appointmentUrl, token);
             log("Success! Appointment resources retrieved from Epic.");
 
@@ -282,7 +303,7 @@ Accept: application/fhir+json`;
                 container.textContent = JSON.stringify(appointmentData, null, 2);
             }
         } catch (err) {
-            log(`Error during FHIR workflow: ${err.message}`);
+            log(`Error fetching appointments: ${err.message}`);
         }
     });
 });
