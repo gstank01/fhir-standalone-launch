@@ -147,4 +147,29 @@ pre {
     justify-content: flex-end;
 }
 
+/* Add to css/styles.css */
+
+/* Stage 1 Outgoing Patient Search Preview */
+#m-fhir-patient-search-preview {
+    background: #1e1e1e;
+    color: #4af626;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Stage 2 Constructed Appointment Query Preview */
+#m-fhir-appointment-preview {
+    background: #1e1e1e;
+    color: #38bdf8;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
 
