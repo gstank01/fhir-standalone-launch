@@ -173,3 +173,37 @@ pre {
     word-break: break-all;
 }
 
+/* Inspection Popup Window Styling */
+body.inspection-window-body {
+    font-family: monospace;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 20px;
+}
+
+body.inspection-window-body h2 {
+    color: #569cd6;
+    font-family: sans-serif;
+    margin-top: 0;
+}
+
+body.inspection-window-body .highlight {
+    background-color: #264f78;
+    color: #ffffff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+body.inspection-window-body hr {
+    border: 0;
+    border-top: 1px solid #444;
+    margin: 15px 0;
+}
+
+.json-inspection-preview {
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
