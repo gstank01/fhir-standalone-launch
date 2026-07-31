@@ -11,9 +11,19 @@
     
     <div class="container">
         <!-- TRIGGER ZONE -->
-        <div class="box">
-            <h2>Actions</h2>
-            <button id="launchBtn">GET Appointments</button>
+       <div class="box">
+            <h2>RIS Radiology Worklist</h2>
+    
+            <div class="worklist-selector-group">
+                <label for="worklistSelect">Select Active Patient:</label>
+                <select id="worklistSelect" class="worklist-dropdown">
+                </select>
+            </div>
+
+            <div id="patientContextCard" class="patient-card">
+            </div>
+
+            <button id="launchBtn" class="primary-btn">GET Appointments</button>
         </div>
 
         <!-- LOGS & DATA ZONE -->
