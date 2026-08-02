@@ -1,19 +1,3 @@
-// --- 1. CALLBACK HANDLER (Runs inside Pop-up when redirected back from EHR) ---
-(function handleCallback() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const returnedState = urlParams.get('state');
-
-    if (code && window.opener) {
-        window.opener.postMessage({ 
-            type: 'AUTH_CODE', 
-            code: code, 
-            state: returnedState 
-        }, window.location.origin);
-        window.close();
-    }
-})();
-
 // --- Helper for opening raw JSON object in a popup window linking external CSS ---
 function openJsonInspectionWindow(title, rootId, jsonData) {
     const jsonWindow = window.open("", title, "width=700,height=800,scrollbars=yes");
