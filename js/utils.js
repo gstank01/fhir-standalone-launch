@@ -22,6 +22,7 @@ function log(message) {
     const returnedState = urlParams.get('state'); //state
 
     if (code && window.opener) { // check that a code was received and that the session is opened in a pop-up window
+        //Uses postMessage to cross the boundary between pop-up and main window safely
         window.opener.postMessage({ 
             type: 'AUTH_CODE', 
             code: code, 
