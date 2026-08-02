@@ -26,7 +26,7 @@
             <button id="launchBtn" class="primary-btn">GET Appointments</button>
         </div>
 
-        <!-- LOGS & DATA ZONE -->
+        <!-- Log and responce data-->
         <div class="box">
             <h2>Live Process Logs</h2>
             <div id="logs">App ready. Click trigger to start...</div>
@@ -36,10 +36,10 @@
         </div>
     </div>
 
-    <!-- STEP 1: PRE-FLIGHT INSPECTION MODAL -->
+    <!-- STEP 1: INITIAL PARAMETRES INSPECTION MODAL -->
     <div id="preflightModal" class="modal-overlay">
         <div class="modal">
-            <h2 class="modal-header">Step 1: OAuth 2.0 Authorization Pre-Flight Check</h2>
+            <h2 class="modal-header">Step 1: OAuth 2.0 Authorization Request Paramethres Check </h2>
             <p style="font-size: 14px; color: #555;">Review or modify the HTTP GET request parameters constructed for the Epic SMART Launch before redirection:</p>
             
             <table class="param-table">
@@ -60,11 +60,11 @@
                     <td><input type="text" id="m-aud" class="param-input"></td>
                 </tr>
                 <tr>
-                    <th>State (CSRF)</th>
+                    <th>State </th>
                     <td><input type="text" id="m-state" class="param-input"></td>
                 </tr>
                 <tr>
-                    <th>Scopes Requested</th>
+                    <th>Scope</th>
                     <td><textarea id="m-scope" class="param-input" rows="2"></textarea></td>
                 </tr>
             </table>
@@ -79,7 +79,7 @@
         </div>
     </div>
 
-    <!-- STEP 2 CAPTURE & STEP 3 TOKEN POST PRE-FLIGHT MODAL -->
+    <!-- STEP 2 CAPTURE & STEP 3 TOKEN POST PARAMETERS CHECK MODAL -->
     <div id="codeModal" class="modal-overlay">
         <div class="modal">
             <h2 class="modal-header">Steps 2 & 3: Authorization Code & Token Exchange Check</h2>
