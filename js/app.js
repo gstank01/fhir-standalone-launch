@@ -1,4 +1,4 @@
-// --- 2. MAIN APPLICATION LOGIC ---
+// ---MAIN APPLICATION LOGIC ---
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof CONFIG === 'undefined') {
         log("CRITICAL ERROR: 'CONFIG' is not defined. Ensure js/config.js is loaded before js/app.js in index.html!");
@@ -14,13 +14,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmPatientSearchBtn = document.getElementById('confirmPatientSearchBtn');
     const confirmAppointmentFetchBtn = document.getElementById('confirmAppointmentFetchBtn');
 
-    const getVal = (id) => document.getElementById(id)?.value || '';
+    //
+
+    const getVal = (id) => document.getElementById(id)?.value || ''; //Look up the element in the DOM tree by its ID
     const setVal = (id, val) => {
+        //Look up the target element in the DOM tree
         const el = document.getElementById(id);
+        //Verify that the element actually exists on the current page
         if (el) el.value = val || '';
     };
 
-    // --- RIS PATIENT WORKLIST INTEGRATION ---
+    // WORK IN PROGRESS --- RIS PATIENT WORKLIST INTEGRATION ---
     if (typeof PatientStore !== 'undefined') {
         PatientStore.init();
 
@@ -96,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // STEP 1: Trigger Button -> Save Patient Context & Open Pre-Flight Modal
     launchBtn?.addEventListener('click', () => {
         try {
-            // Retrieve active patient from RIS Store and save context to session
+            //--WORK IN PROGRESS-- Retrieve active patient from RIS Store and save context to session
             if (typeof PatientStore !== 'undefined') {
                 const activePatient = PatientStore.getActivePatient();
                 AuthStore.setPatientContext(activePatient);
@@ -153,158 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
         log("Token exchange aborted by user.");
     });
 
-    // STEP 3: Confirm Token Exchange -> Auto-Fill Patient Context & Open Step 4 Modal
-    confirmTokenExchangeBtn?.addEventListener('click', async () => {
-        document.getElementById('codeModal')?.classList.remove('active');
-        log("Proceeding to Step 3: Exchanging authorization code for Access Token...");
-
-        try {
-            const tokenData = await exchangeCodeForToken();
-            log("Success! Access Token acquired.");
-
-            // Store in AuthStore & populate dynamic input element
-            AuthStore.setAccessToken(tokenData.access_token);
-            setVal('m-bearer-token', tokenData.access_token);
-
-            // Auto-fill Step 4 lookup parameters using saved patient context
-            const patientContext = AuthStore.getPatientContext() || (typeof PatientStore !== 'undefined' ? PatientStore.getActivePatient() : null);
-            if (patientContext) {
-                setVal('m-search-name', patientContext.given || patientContext.name || '');
-                setVal('m-search-identifier', patientContext.identifier || '');
-                log(`Loaded patient context into Step 4: ${patientContext.name} (${patientContext.identifier})`);
-            }
-
-            // Dynamically updates Stage 1 Preview using Patient?identifier={id}
-            function updatePatientSearchPreview() {
-                const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
-                const identifier = getVal('m-search-identifier');
-                const token = getVal('m-bearer-token');
-
-                const targetUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
-
-                const rawHttpGetText = 
-`GET ${targetUrl} HTTP/1.1
-Host: fhir.epic.com
-Authorization: Bearer ${token}
-Accept: application/fhir+json`;
-
-                const previewEl = document.getElementById('m-fhir-patient-search-preview');
-                if (previewEl) previewEl.textContent = rawHttpGetText;
-            }
-
-            // Attach dynamic typing listeners
-            ['m-search-identifier', 'm-bearer-token'].forEach(id => {
-                document.getElementById(id)?.addEventListener('input', updatePatientSearchPreview);
-            });
-
-            updatePatientSearchPreview();
-
-            // Open Step 4 Modal & PAUSE
-            const fhirModal = document.getElementById('fhirModal');
-            if (fhirModal) {
-                fhirModal.classList.add('active');
-                log("PAUSED at Step 4: Review Patient Identifier lookup parameters and Bearer token.");
-            }
-        } catch (err) {
-            log(`Token Exchange Failed: ${err.message}`);
-        }
-    });
-
-    cancelFhirBtn?.addEventListener('click', () => {
-        document.getElementById('fhirModal')?.classList.remove('active');
-        log("FHIR query aborted by user.");
-    });
-
-    // ACTION 1: Execute Patient Search -> Open Window -> Extract ID -> PAUSE
-    confirmPatientSearchBtn?.addEventListener('click', async () => {
-        const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
-        const token = getVal('m-bearer-token') || AuthStore.getAccessToken();
-        const identifier = getVal('m-search-identifier');
-
-        if (!identifier) {
-            log("ERROR: Patient Identifier is required for lookup.");
-            return;
-        }
-
-        const patientSearchUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
-
-        try {
-            log(`Stage 1: Searching for Patient via ${patientSearchUrl}...`);
-            const bundle = await fetchFhirResource(patientSearchUrl, token);
-
-            if (!bundle.entry || bundle.entry.length === 0) {
-                throw new Error(`No patient found matching identifier '${identifier}'.`);
-            }
-
-            const patientResource = bundle.entry[0].resource;
-
-            // 1. Open JSON inspection pop-up window
-            openJsonInspectionWindow("Patient Resource Inspection", patientResource.id, patientResource);
-            log("Patient Resource opened in pop-up window. Inspect patientResource.id!");
-
-            // 2. Extract and sanitize FHIR ID
-            let patientFhirId = patientResource.id || '';
-            if (patientFhirId.startsWith('Patient/')) {
-                patientFhirId = patientFhirId.replace('Patient/', '');
-            }
-
-            setVal('m-extracted-patient-id', patientFhirId);
-
-            const patientNameText = patientResource.name?.[0]?.text || "Patient";
-            log(`Stage 1 Success: Identified ${patientNameText} (Extracted ID: ${patientFhirId})`);
-
-            // 3. Populate Stage 2 Preview Box on dashboard
-            const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${encodeURIComponent(patientFhirId)}`;
-            const rawApptGet = 
-`GET ${appointmentUrl} HTTP/1.1
-Host: fhir.epic.com
-Authorization: Bearer ${token}
-Accept: application/fhir+json`;
-
-            const apptPreviewEl = document.getElementById('m-fhir-appointment-preview');
-            if (apptPreviewEl) apptPreviewEl.textContent = rawApptGet;
-
-            // 4. Enable Action 2 Button and PAUSE
-            if (confirmAppointmentFetchBtn) {
-                confirmAppointmentFetchBtn.disabled = false;
-            }
-            log("PAUSED: Verify Patient ID in pop-up window, then click '2. Fetch Appointments'.");
-        } catch (err) {
-            log(`Patient Search Error: ${err.message}`);
-        }
-    });
-
-    // ACTION 2: Fetch Appointments (Executes ONLY when user clicks Button 2)
-    confirmAppointmentFetchBtn?.addEventListener('click', async () => {
-        document.getElementById('fhirModal')?.classList.remove('active');
-
-        const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
-        const token = getVal('m-bearer-token') || AuthStore.getAccessToken();
-        const patientFhirId = getVal('m-extracted-patient-id');
-
-        if (!patientFhirId) {
-            log("ERROR: No extracted FHIR Patient ID found. Run Stage 1 search first.");
-            return;
-        }
-
-        const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${encodeURIComponent(patientFhirId)}`;
-
-        try {
-            log(`Stage 2: Fetching Appointments via ${appointmentUrl}...`);
-            const appointmentData = await fetchFhirResource(appointmentUrl, token);
-            log("Success! Appointment resources retrieved from Epic.");
-
-            const container = document.getElementById('fhirData');
-            if (container) {
-                container.textContent = JSON.stringify(appointmentData, null, 2);
-            }
-        } catch (err) {
-            log(`Error fetching appointments: ${err.message}`);
-        }
-    });
-});
-
-// --- 3. LISTEN FOR AUTH CODE & INTERCEPT AT STEP 2/3 ---
+    // --- 3. LISTEN FOR AUTH CODE & INTERCEPT AT STEP 2/3 ---
 window.addEventListener('message', (event) => {
     if (event.origin !== window.location.origin) return;
 
@@ -372,6 +225,158 @@ ${bodyParams.toString()}`;
         }
     }
 });
+
+    // STEP 3: Confirm Token Exchange -> Auto-Fill Patient Context & Open Step 4 Modal
+    confirmTokenExchangeBtn?.addEventListener('click', async () => {
+        document.getElementById('codeModal')?.classList.remove('active');
+        log("Proceeding to Step 3: Exchanging authorization code for Access Token...");
+
+        try {
+            const tokenData = await exchangeCodeForToken();
+            log("Success! Access Token acquired.");
+
+            // Store in AuthStore & populate dynamic input element
+            AuthStore.setAccessToken(tokenData.access_token);
+            setVal('m-bearer-token', tokenData.access_token);
+
+            // Auto-fill Step 4 lookup parameters using saved patient context
+            const patientContext = AuthStore.getPatientContext() || (typeof PatientStore !== 'undefined' ? PatientStore.getActivePatient() : null);
+            if (patientContext) {
+                setVal('m-search-name', patientContext.given || patientContext.name || '');
+                setVal('m-search-identifier', patientContext.identifier || '');
+                log(`Loaded patient context into Step 4: ${patientContext.name} (${patientContext.identifier})`);
+            }
+
+            // Dynamically updates Stage 1 Preview using Patient?identifier={id}
+            function updatePatientSearchPreview() {
+                const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
+                const identifier = getVal('m-search-identifier');
+                const token = getVal('m-bearer-token');
+
+                const targetUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
+
+                const rawHttpGetText = 
+`GET ${targetUrl} HTTP/1.1
+Host: fhir.epic.com
+Authorization: Bearer ${token}
+Accept: application/fhir+json`;
+
+                const previewEl = document.getElementById('m-fhir-patient-search-preview');
+                if (previewEl) previewEl.textContent = rawHttpGetText;
+            }
+
+            // Attach dynamic typing listeners
+            ['m-search-identifier', 'm-bearer-token'].forEach(id => {
+                document.getElementById(id)?.addEventListener('input', updatePatientSearchPreview);
+            });
+
+            updatePatientSearchPreview();
+
+            // Open Step 4 Modal & PAUSE
+            const fhirModal = document.getElementById('fhirModal');
+            if (fhirModal) {
+                fhirModal.classList.add('active');
+                log("PAUSED at Step 4: Review Patient Identifier lookup parameters and Bearer token.");
+            }
+        } catch (err) {
+            log(`Token Exchange Failed: ${err.message}`);
+        }
+    });
+
+    cancelFhirBtn?.addEventListener('click', () => {
+        document.getElementById('fhirModal')?.classList.remove('active');
+        log("FHIR query aborted by user.");
+    });
+
+    // ACTION 1: Execute Patient Search -> Open Window -> Extract ID -> PAUSE
+    confirmPatientSearchBtn?.addEventListener('click', async () => {
+        const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL; //if the field is empty fall back to the config file
+        const token = getVal('m-bearer-token') || AuthStore.getAccessToken();//if the field is empty fall back to the AuthStore
+        const identifier = getVal('m-search-identifier');
+
+        if (!identifier) {
+            log("ERROR: Patient Identifier is required for lookup.");
+            return;
+        }
+
+        const patientSearchUrl = `${fhirBaseUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
+
+        try {
+            log(`Stage 1: Searching for Patient via ${patientSearchUrl}...`);
+            const bundle = await fetchFhirResource(patientSearchUrl, token);
+
+            if (!bundle.entry || bundle.entry.length === 0) {
+                throw new Error(`No patient found matching identifier '${identifier}'.`);
+            }
+
+            const patientResource = bundle.entry[0].resource;
+
+            // 1. Open JSON inspection pop-up window
+            openJsonInspectionWindow("Patient Resource Inspection", patientResource.id, patientResource);
+            log("Patient Resource opened in pop-up window. Inspect patientResource.id!");
+
+            // 2. Extract and sanitise FHIR ID
+            let patientFhirId = patientResource.id || '';
+            if (patientFhirId.startsWith('Patient/')) {
+                patientFhirId = patientFhirId.replace('Patient/', '');
+            }
+
+            setVal('m-extracted-patient-id', patientFhirId);
+
+            const patientNameText = patientResource.name?.[0]?.text || "Patient";
+            log(`Stage 1 Success: Identified ${patientNameText} (Extracted ID: ${patientFhirId})`);
+
+            // 3. Populate Stage 2 Preview Box on dashboard
+            const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${encodeURIComponent(patientFhirId)}`;
+            const rawApptGet = 
+`GET ${appointmentUrl} HTTP/1.1
+Host: fhir.epic.com
+Authorization: Bearer ${token}
+Accept: application/fhir+json`;
+
+            const apptPreviewEl = document.getElementById('m-fhir-appointment-preview');
+            if (apptPreviewEl) apptPreviewEl.textContent = rawApptGet;
+
+            // 4. Enable Action 2 Button and PAUSE
+            if (confirmAppointmentFetchBtn) {
+                confirmAppointmentFetchBtn.disabled = false;
+            }
+            log("PAUSED: Verify Patient ID in pop-up window, then click '2. Fetch Appointments'.");
+        } catch (err) {
+            log(`Patient Search Error: ${err.message}`);
+        }
+    });
+
+    // ACTION 2: Fetch Appointments (Executes ONLY when user clicks Button 2)
+    confirmAppointmentFetchBtn?.addEventListener('click', async () => {
+        document.getElementById('fhirModal')?.classList.remove('active');
+
+        const fhirBaseUrl = getVal('m-aud') || CONFIG.FHIR_BASE_URL;
+        const token = getVal('m-bearer-token') || AuthStore.getAccessToken();
+        const patientFhirId = getVal('m-extracted-patient-id');
+
+        if (!patientFhirId) {
+            log("ERROR: No extracted FHIR Patient ID found. Run Stage 1 search first.");
+            return;
+        }
+
+        const appointmentUrl = `${fhirBaseUrl}/Appointment?patient=${encodeURIComponent(patientFhirId)}`;
+
+        try {
+            log(`Stage 2: Fetching Appointments via ${appointmentUrl}...`);
+            const appointmentData = await fetchFhirResource(appointmentUrl, token);
+            log("Success! Appointment resources retrieved from Epic.");
+
+            const container = document.getElementById('fhirData');
+            if (container) {
+                container.textContent = JSON.stringify(appointmentData, null, 2);
+            }
+        } catch (err) {
+            log(`Error fetching appointments: ${err.message}`);
+        }
+    });
+});
+
 
 // --- 4. STEP 3 & STEP 4 API CALLS ---
 async function exchangeCodeForToken() {
