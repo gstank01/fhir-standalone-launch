@@ -14,7 +14,7 @@ function log(message) {
     div.scrollTop = div.scrollHeight;
 }
 
-// --- 1. CALLBACK HANDLER (Runs inside Pop-up when redirected back from EHR) ---
+// ---CALLBACK HANDLER (Runs inside Pop-up when redirected back from EHR) ---
 
 (function handleCallback() {
     const urlParams = new URLSearchParams(window.location.search); //search the returned URL to extract the code paramether and match the state parametre with the one we sent out
