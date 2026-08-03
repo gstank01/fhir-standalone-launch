@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    
     const launchBtn = document.getElementById('launchBtn');
     const cancelModalBtn = document.getElementById('cancelModalBtn');
     const confirmLaunchBtn = document.getElementById('confirmLaunchBtn');
@@ -14,9 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmPatientSearchBtn = document.getElementById('confirmPatientSearchBtn');
     const confirmAppointmentFetchBtn = document.getElementById('confirmAppointmentFetchBtn');
 
-    //
-
-    const getVal = (id) => document.getElementById(id)?.value || ''; //Look up the element in the DOM tree by its ID
+    
+    // ---TO MOVED TO utils.js---
+    const getVal = (id) => document.getElementById(id)?.value || ''; //Look up the element in the DOM tree by its ID (the IDs that were assigned in the HTML)
     const setVal = (id, val) => {
         //Look up the target element in the DOM tree
         const el = document.getElementById(id);
@@ -86,18 +87,19 @@ document.addEventListener('DOMContentLoaded', () => {
             aud: getVal('m-aud')
         });
 
-        const pendingAuthUrl = `${endpoint}?${params.toString()}`;
-        AuthStore.setPendingAuthUrl(pendingAuthUrl);
+        const pendingAuthUrl = `${endpoint}?${params.toString()}`; //construct the URL
+        AuthStore.setPendingAuthUrl(pendingAuthUrl);//Store to the browser session
 
         const fullUrlEl = document.getElementById('m-full-url');
-        if (fullUrlEl) fullUrlEl.textContent = pendingAuthUrl;
+        if (fullUrlEl) fullUrlEl.textContent = pendingAuthUrl;//SIDE NOTE - in JS if and IF statemnt has one single line inside it, curly braces {} can be omited.
     }
 
+    //update the URL if any of the parametres are manually updated
     document.querySelectorAll('#preflightModal .param-input').forEach(input => {
         input.addEventListener('input', updatePreviewUrl);
     });
 
-    // STEP 1: Trigger Button -> Save Patient Context & Open Pre-Flight Modal
+    //  Trigger Button -> Save Patient Context & Open Pre-Flight Modal
     launchBtn?.addEventListener('click', () => {
         try {
             //--WORK IN PROGRESS-- Retrieve active patient from RIS Store and save context to session
@@ -109,9 +111,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             log("Generating authorization parameters...");
 
+            //Call the generateRandomString() function to generate the unique state
             const state = generateRandomString(32);
             AuthStore.setState(state);
 
+            //set the Auth Code request input parametres
             setVal('m-endpoint', CONFIG.AUTH_URL);
             setVal('m-client-id', CONFIG.CLIENT_ID);
             setVal('m-redirect-uri', CONFIG.REDIRECT_URI);
@@ -131,11 +135,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    //set the cancell button, to cancel before the execution of the code exchange
     cancelModalBtn?.addEventListener('click', () => {
         document.getElementById('preflightModal')?.classList.remove('active');
         log("Launch canceled by user.");
     });
 
+    //confirm exchange
     confirmLaunchBtn?.addEventListener('click', () => {
         try {
             const currentState = getVal('m-state');
@@ -152,15 +158,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    //set cancel button to cancel before token exchange 
     cancelCodeBtn?.addEventListener('click', () => {
         document.getElementById('codeModal')?.classList.remove('active');
         log("Token exchange aborted by user.");
     });
 
-    // --- 3. LISTEN FOR AUTH CODE & INTERCEPT AT STEP 2/3 ---
+    // --- Listen for AUTH code ---
 window.addEventListener('message', (event) => {
     if (event.origin !== window.location.origin) return;
 
+    //check if the state is a match
     if (event.data && event.data.type === 'AUTH_CODE') {
         const { code, state } = event.data;
         const savedState = AuthStore.getState();
@@ -174,11 +182,13 @@ window.addEventListener('message', (event) => {
 
         log("Step 2 Complete: Authorization Code captured successfully!");
 
+        //save the auth code in sessionStorage
         AuthStore.setAuthCode(code);
 
+        //set the parametres as constants
         const redirectUri = document.getElementById('m-redirect-uri')?.value || CONFIG.REDIRECT_URI;
         const clientId = document.getElementById('m-client-id')?.value || CONFIG.CLIENT_ID;
-
+        
         const setVal = (id, val) => {
             const el = document.getElementById(id);
             if (el) el.value = val || '';
@@ -191,6 +201,7 @@ window.addEventListener('message', (event) => {
         setVal('m-step3-redirect-uri', redirectUri);
         setVal('m-step3-client-id', clientId);
 
+        //Update the perview URL
         function updatePostPreview() {
             const endpoint = document.getElementById('m-token-endpoint')?.value || CONFIG.TOKEN_URL;
             const bodyParams = new URLSearchParams({
@@ -212,6 +223,7 @@ ${bodyParams.toString()}`;
             if (previewEl) previewEl.textContent = rawHttpPostText;
         }
 
+        //update the preview URL if any of the patametres input changes 
         ['m-token-endpoint', 'm-grant-type', 'm-auth-code', 'm-step3-redirect-uri', 'm-step3-client-id'].forEach((id) => {
             document.getElementById(id)?.addEventListener('input', updatePostPreview);
         });
@@ -225,8 +237,39 @@ ${bodyParams.toString()}`;
         }
     }
 });
+    // --- Token exchange ---
+async function exchangeCodeForToken() {
+    const tokenEndpoint = document.getElementById('m-token-endpoint')?.value || CONFIG.TOKEN_URL;
+    const grantType = document.getElementById('m-grant-type')?.value || 'authorization_code';
+    const code = document.getElementById('m-auth-code')?.value || AuthStore.getAuthCode();
+    const redirectUri = document.getElementById('m-step3-redirect-uri')?.value || CONFIG.REDIRECT_URI;
+    const clientId = document.getElementById('m-step3-client-id')?.value || CONFIG.CLIENT_ID;
 
-    // STEP 3: Confirm Token Exchange -> Auto-Fill Patient Context & Open Step 4 Modal
+    const bodyParams = new URLSearchParams({
+        grant_type: grantType,
+        code: code,
+        redirect_uri: redirectUri,
+        client_id: clientId
+    });
+
+    const response = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
+        },
+        body: bodyParams.toString()
+    });
+
+    if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errBody}`);
+    }
+
+    return await response.json();
+}
+
+    // --- API Calls ---
     confirmTokenExchangeBtn?.addEventListener('click', async () => {
         document.getElementById('codeModal')?.classList.remove('active');
         log("Proceeding to Step 3: Exchanging authorization code for Access Token...");
@@ -315,7 +358,7 @@ Accept: application/fhir+json`;
             openJsonInspectionWindow("Patient Resource Inspection", patientResource.id, patientResource);
             log("Patient Resource opened in pop-up window. Inspect patientResource.id!");
 
-            // 2. Extract and sanitise FHIR ID
+            // 2. Extract  FHIR ID
             let patientFhirId = patientResource.id || '';
             if (patientFhirId.startsWith('Patient/')) {
                 patientFhirId = patientFhirId.replace('Patient/', '');
@@ -378,37 +421,6 @@ Accept: application/fhir+json`;
 });
 
 
-// --- 4. STEP 3 & STEP 4 API CALLS ---
-async function exchangeCodeForToken() {
-    const tokenEndpoint = document.getElementById('m-token-endpoint')?.value || CONFIG.TOKEN_URL;
-    const grantType = document.getElementById('m-grant-type')?.value || 'authorization_code';
-    const code = document.getElementById('m-auth-code')?.value || AuthStore.getAuthCode();
-    const redirectUri = document.getElementById('m-step3-redirect-uri')?.value || CONFIG.REDIRECT_URI;
-    const clientId = document.getElementById('m-step3-client-id')?.value || CONFIG.CLIENT_ID;
-
-    const bodyParams = new URLSearchParams({
-        grant_type: grantType,
-        code: code,
-        redirect_uri: redirectUri,
-        client_id: clientId
-    });
-
-    const response = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json'
-        },
-        body: bodyParams.toString()
-    });
-
-    if (!response.ok) {
-        const errBody = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errBody}`);
-    }
-
-    return await response.json();
-}
 
 async function fetchFhirResource(targetUrl, token) {
     const response = await fetch(targetUrl, {
