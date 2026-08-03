@@ -39,5 +39,6 @@ const AuthStore = {
         sessionStorage.removeItem('fhir_pending_auth_url');
         sessionStorage.removeItem('fhir_access_token');
         sessionStorage.removeItem('fhir_state');
+        sessionStorage.removeItem('ris_active_patient_context');
     }
 };
