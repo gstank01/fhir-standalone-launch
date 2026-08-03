@@ -3,7 +3,7 @@
 const PATIENT_LIST = [
     {
         id: "RIS-101",
-        identifier: "AO1QDN948FSHJXN", // Core lookup identifier (MRN / Patient ID)
+        identifier: "AO1F9JX4ZMWQX6V", // Lookup identifier (MRN / Patient ID)
         name: "Allison Mychart",
         given: "Allison",
         family: "Mychart",
