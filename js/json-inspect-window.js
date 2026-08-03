@@ -32,7 +32,7 @@ function openJsonInspectionWindow(title, rootId, jsonData) {
     body.appendChild(h2);
 
     const p = doc.createElement('p');
-    p.appendChild(doc.createTextNode("Root id field value: "));
+    p.appendChild(doc.createTextNode("Patient FHIR ID: "));
     const span = doc.createElement('span');
     span.className = 'highlight';
     span.textContent = rootId || 'UNDEFINED';
@@ -41,7 +41,7 @@ function openJsonInspectionWindow(title, rootId, jsonData) {
 
     const closeBtn = doc.createElement('button');
     closeBtn.textContent = 'Close Window';
-    closeBtn.className = 'btn-close-inspection'; // You can style this in css/styles.css
+    closeBtn.className = 'btn-close-inspection'; // Style this in css/styles.css
     closeBtn.addEventListener('click', () => {
         jsonWindow.close();
     });
