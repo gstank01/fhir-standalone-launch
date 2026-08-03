@@ -21,7 +21,27 @@ const PATIENT_LIST = [
     },
     {
         id: "RIS-102",
-        identifier: "TEST-MRN-002", // Replace with your second test patient identifier/MRN
+        identifier: "AO1J5HL3V8JC4PQ", 
+        name: "Mr. Theodore Mychart",
+        given: "Theodore",
+        family: "Mychart",
+        gender: "Male",
+        telecom: "+1 608-213-5806",
+        address: {
+            street: "1 First Ave",
+            city: "Madison",
+            state: "WI",
+            postalCode: "53706-6782"
+        },
+        modality: "MRI Brain",
+        studyStatus: "Scheduled",
+        localNotes: "MRI Brain. Verified patient identifier."
+    },
+    
+     //placeholder test patient
+     {
+        id: "RIS-103",
+        identifier: "TEST-MRN-002", //
         name: "Test Patient Two",
         given: "Test",
         family: "Patient",
