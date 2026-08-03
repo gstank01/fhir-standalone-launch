@@ -18,7 +18,7 @@ function openJsonInspectionWindow(title, rootId, jsonData) {
     titleEl.textContent = title;
     head.appendChild(titleEl);
 
-    // Link directly to external CSS file (no CSS in JS)
+    // Link directly to external CSS file 
     const linkEl = doc.createElement('link');
     linkEl.rel = 'stylesheet';
     linkEl.href = 'css/styles.css';
@@ -38,6 +38,14 @@ function openJsonInspectionWindow(title, rootId, jsonData) {
     span.textContent = rootId || 'UNDEFINED';
     p.appendChild(span);
     body.appendChild(p);
+
+    const closeBtn = doc.createElement('button');
+    closeBtn.textContent = 'Close Window';
+    closeBtn.className = 'btn-close-inspection'; // You can style this in css/styles.css
+    closeBtn.addEventListener('click', () => {
+        jsonWindow.close();
+    });
+    body.appendChild(closeBtn);
 
     body.appendChild(doc.createElement('hr'));
 
