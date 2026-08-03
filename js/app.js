@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.value = val || '';
     };
 
-    // WORK IN PROGRESS --- RIS PATIENT WORKLIST INTEGRATION ---
+    // --- RIS PATIENT WORKLIST INTEGRATION ---
     if (typeof PatientStore !== 'undefined') {
         PatientStore.init();
 
