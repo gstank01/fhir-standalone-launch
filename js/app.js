@@ -1,6 +1,6 @@
 // ---MAIN APPLICATION LOGIC ---
-document.addEventListener('DOMContentLoaded', () => {
-    if (typeof CONFIG === 'undefined') {
+document.addEventListener('DOMContentLoaded', () => { // Wait for the HTML document to be fully loaded and parsed before running code
+    if (typeof CONFIG === 'undefined') { //check if config.js is defined
         log("CRITICAL ERROR: 'CONFIG' is not defined. Ensure js/config.js is loaded before js/app.js in index.html!");
         return;
     }
@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- RIS PATIENT WORKLIST INTEGRATION ---
-    if (typeof PatientStore !== 'undefined') {
+    if (typeof PatientStore !== 'undefined') { //check if patient store exist
         PatientStore.init();
 
         function renderWorklistUI() {
@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //  Trigger Button -> Save Patient Context & Open Pre-Flight Modal
     launchBtn?.addEventListener('click', () => {
         try {
-            //--WORK IN PROGRESS-- Retrieve active patient from RIS Store and save context to session
+            //-- Retrieve active patient from RIS Store and save context to session
             if (typeof PatientStore !== 'undefined') {
                 const activePatient = PatientStore.getActivePatient();
                 AuthStore.setPatientContext(activePatient);
