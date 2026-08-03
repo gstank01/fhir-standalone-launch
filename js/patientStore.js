@@ -72,5 +72,9 @@ const PatientStore = {
             patients[index].localNotes = newNotes;
             localStorage.setItem('ris_patients', JSON.stringify(patients));
         }
+    },
+    resetPatients: function() {
+    localStorage.setItem('ris_patients', JSON.stringify(PATIENT_LIST));
     }
+    
 };
