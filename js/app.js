@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmAppointmentFetchBtn = document.getElementById('confirmAppointmentFetchBtn');
 
     
-    // ---TO MOVED TO utils.js---
+    // ---???TO MOVED TO utils.js---
     const getVal = (id) => document.getElementById(id)?.value || ''; //Look up the element in the DOM tree by its ID (the IDs that were assigned in the HTML)
     const setVal = (id, val) => {
         //Look up the target element in the DOM tree
