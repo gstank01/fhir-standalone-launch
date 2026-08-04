@@ -1,10 +1,10 @@
 // config.js
 const CONFIG = {
     // Epic Sandbox Configuration
-    CLIENT_ID: 'ef3b2af6-c1b8-4421-9dda-108c6ac8afce',
-    FHIR_BASE_URL: 'https://vendorservices.epic.com/interconnect-amcurprd-oauth/api/FHIR/R4',
-    AUTH_URL: 'https://vendorservices.epic.com/interconnect-amcurprd-oauth/oauth2/authorize',
-    TOKEN_URL: 'https://vendorservices.epic.com/interconnect-amcurprd-oauth/oauth2/token',
+    CLIENT_ID: 'Your non-production Client ID',
+    FHIR_BASE_URL: 'Your FHIR Base URL',
+    AUTH_URL: 'FHIR Server autorization endpoin',
+    TOKEN_URL: 'FHIR Server token endpoint',
     
     // Dynamically generate Redirect URI pointing back to current page path
     REDIRECT_URI: 'https://gstank01.github.io/fhir-standalone-launch/index.html',
