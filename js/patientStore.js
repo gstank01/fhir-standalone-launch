@@ -53,7 +53,7 @@ const PATIENT_LIST = [
             state: "Wisconsin",
             postalCode: "53711"
         },
-        modality: "US Breast",
+        modality: "US Abdomen",
         studyStatus: "Requested",
         localNotes: "Patient to test referrals"
     },
