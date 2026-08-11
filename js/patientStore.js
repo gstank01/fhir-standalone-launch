@@ -41,6 +41,26 @@ const PATIENT_LIST = [
      //placeholder test patient
      {
         id: "RIS-103",
+        identifier: "AO1SJTB09Q9KBNS", //
+        name: "William A Transplant",
+        given: "William A",
+        family: "Transplant",
+        gender: "Male",
+        telecom: "+1 608-550-4147",
+        address: {
+            street: "4147 Glacier Trl",
+            city: "Madison",
+            state: "Wisconsin",
+            postalCode: "53711"
+        },
+        modality: "US Breast",
+        studyStatus: "Requested",
+        localNotes: "Patient to test referrals"
+    },
+
+    //placeholder test patient
+     {
+        id: "RIS-104",
         identifier: "TEST-MRN-002", //
         name: "Test Patient Two",
         given: "Test",
