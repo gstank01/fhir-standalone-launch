@@ -10,5 +10,5 @@ const CONFIG = {
     REDIRECT_URI: 'https://gstank01.github.io/fhir-standalone-launch/index.html',
     
     // Scopes required by Epic standalone launch
-    SCOPES: 'aunch openid fhirUser' // Add additional FHIR resource scopes here. This is the bare minimum for the app to work
+    SCOPES: 'launch openid fhirUser' // Add additional FHIR resource scopes here. This is the bare minimum for the app to work
 };
