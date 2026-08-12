@@ -41,7 +41,7 @@ const PATIENT_LIST = [
      //placeholder test patient
      {
         id: "RIS-103",
-        identifier: "AO1SJTB09Q9KBNS", //
+        identifier: "AO1SXH83648GK9T", //
         name: "William A Transplant",
         given: "William A",
         family: "Transplant",
