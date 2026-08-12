@@ -2,7 +2,7 @@ const jsrsasign = require('jsrsasign'); //library
 const crypto = require('crypto'); 
 
 try {
-    const myClientID = "43389778-2aae-479e-92b2-68caad2e5e74";//replace with your client 
+    const clientID = "43389778-2aae-479e-92b2-68caad2e5e74";//replace with your client 
     const audienceUrl = "https://epicproxy-np.et1059.epichosted.com/FHIRProxy/oauth2/token"; //replace with the server token endpoint 
 
     const header = {
@@ -13,8 +13,8 @@ try {
 
     const now = Math.floor(Date.now() / 1000);
     const payload = {
-        iss: myClientID,
-        sub: myClientID,
+        iss: clientID,
+        sub: clientID,
         aud: audienceUrl,
         exp: now + 300,
         jti: crypto.randomUUID().toUpperCase() 
