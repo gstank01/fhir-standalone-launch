@@ -34,8 +34,7 @@ try {
 
     const generatedToken = jsrsasign.KJUR.jws.JWS.sign("RS512", sHeader, sPayload, privateKeyText);
 
-    console.log("Client Assertion Token Generated Successfully!");
-    console.log(generatedToken);
+    console.log("Client Assertion Token Generated Successfully!", generatedToken);
 
 } catch (error) {
     console.error("Script Error:", error);
