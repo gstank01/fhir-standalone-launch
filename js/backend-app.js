@@ -2,8 +2,8 @@ const jsrsasign = require('jsrsasign'); //library
 const crypto = require('crypto'); 
 
 try {
-    const clientID = "43389778-2aae-479e-92b2-68caad2e5e74";//replace with your client 
-    const audienceUrl = "https://epicproxy-np.et1059.epichosted.com/FHIRProxy/oauth2/token"; //replace with the server token endpoint 
+    const clientID = process.env.CLIENTID; //replace with your client 
+    const audienceUrl = process.env.AUDIENCEURL; //replace with the server token endpoint 
 
     const header = {
         "alg": "RS512",
