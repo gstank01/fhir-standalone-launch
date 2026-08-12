@@ -22,4 +22,4 @@ jobs:
       - name: Run my JS script
         env:
           PRIVATE_KEY: ${{ secrets.BACKEND_APP_PK }}
-        run: node backend-app.js
+        run: node js/backend-app.js
