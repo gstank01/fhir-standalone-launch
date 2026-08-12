@@ -3,6 +3,7 @@ name: Run Script
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch: # This enables the manual "Run workflow" button!
 
 jobs:
   run-test:
