@@ -1,9 +1,18 @@
-const jsrsasign = require('jsrsasign'); //library
-const crypto = require('crypto'); 
+//const jsrsasign = require('jsrsasign'); library
+const crypto = require('crypto'); //Node native crypto module
 
 try {
+    console.log("--- STARTING BACKEND ASSERTION SCRIPT (NATIVE CRYPTO) ---");
+    
     const clientID = process.env.CLIENTID; //replace the variable with with your client id
     const audienceUrl = process.env.AUDIENCEURL; //replace variable with the server token endpoint 
+    
+    // Pull the secret from GitHub secrets
+    const privateKeyText = process.env.BACKEND_APP_PK; 
+
+    if (!privateKeyText || !clientID || !audienceUrl) {
+        throw new Error("One or more required environment variables (CLIENTID, AUDIENCEURL, BACKEND_APP_PK) are empty!");
+    }
 
     //construct header
     const header = {
@@ -21,22 +30,38 @@ try {
         jti: crypto.randomUUID().toUpperCase() 
     };
 
-    // Pull the secret from GitHub secrets
-    const privateKeyText = process.env.BACKEND_APP_PK; 
+    const base64UrlEncode = (input) => {
+        return Buffer.from(input)
+            .toString('base64')
+            .replace(/=/g, '')
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_');
+    };
 
-    if (!privateKeyText) {
-        console.error("Error: BACKEND_APP_PK environment variable is empty!");
-        process.exit(1); 
-    }
+    const encodedHeader = base64UrlEncode(JSON.stringify(header));
+    const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-    const sHeader = JSON.stringify(header);
-    const sPayload = JSON.stringify(payload);
+    // Sign using Node.js Native Crypto (RS512)
+    console.log("Signing JWT using native Node.js crypto...");
+    const sign = crypto.createSign('RSA-SHA512');
+    sign.update(signingInput);
+    sign.end();
 
-    const generatedToken = jsrsasign.KJUR.jws.JWS.sign("RS512", sHeader, sPayload, privateKeyText);
+    const signature = sign.sign(privateKeyText, 'base64')
+        .replace(/=/g, '')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_');
 
-    console.log("Client Assertion Token Generated Successfully!", generatedToken);
+    const generatedToken = `${signingInput}.${signature}`;
+
+    console.log("Client Assertion Token Generated Successfully!");
+    console.log("==================================================");
+    console.log(generatedToken);
+    console.log("==================================================");
 
 } catch (error) {
-    console.error("Script Error:", error);
+    console.error("CRITICAL SCRIPT ERROR CAUGHT:");
+    console.error(error.message || error);
     process.exit(1); 
 }
