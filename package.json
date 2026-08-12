@@ -1,0 +1,9 @@
+{
+  "name": "backend-fhir-script",
+  "version": "1.0.0",
+  "description": "JWT signing script",
+  "main": "js/backend-app.js",
+  "dependencies": {
+    "jsrsasign": "^11.1.0"
+  }
+}
