@@ -2,9 +2,10 @@ const jsrsasign = require('jsrsasign'); //library
 const crypto = require('crypto'); 
 
 try {
-    const clientID = process.env.CLIENTID; //replace with your client 
-    const audienceUrl = process.env.AUDIENCEURL; //replace with the server token endpoint 
+    const clientID = process.env.CLIENTID; //replace the variable with with your client id
+    const audienceUrl = process.env.AUDIENCEURL; //replace variable with the server token endpoint 
 
+    //construct header
     const header = {
         "alg": "RS512",
         "typ": "JWT",
@@ -20,7 +21,7 @@ try {
         jti: crypto.randomUUID().toUpperCase() 
     };
 
-    // Pull the secret from GitHub Actions
+    // Pull the secret from GitHub secrets
     const privateKeyText = process.env.BACKEND_APP_PK; 
 
     if (!privateKeyText) {
