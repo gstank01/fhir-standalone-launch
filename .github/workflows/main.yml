@@ -1,17 +1,14 @@
-name: Backend Job
+name: Run Script
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-  build-and-test:
+  run-test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Node.js
@@ -19,11 +16,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies (if applicable)
-        run: npm ci || true
+      - name: Install dependencies
+        run: npm install
 
-      - name: Execute Script with Injected Private Key
+      - name: Run my JS script
         env:
-          # Injects the GitHub Secret safely as an environment variable
-          PRIVATE_KEY: ${{ secrets.BACKEND_APP_PK }}
+          PRIVATE_KEY: ${{ BACKEND_APP_PK }}
         run: node index.js
