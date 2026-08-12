@@ -38,7 +38,6 @@ const PATIENT_LIST = [
         localNotes: "MRI Brain. Verified patient identifier."
     },
     
-     //placeholder test patient
      {
         id: "RIS-103",
         identifier: "AO1SXH83648GK9T", //
