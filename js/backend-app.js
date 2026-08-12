@@ -56,9 +56,7 @@ try {
     const generatedToken = `${signingInput}.${signature}`;
 
     console.log("Client Assertion Token Generated Successfully!");
-    console.log("==================================================");
     console.log(generatedToken);
-    console.log("==================================================");
 
 } catch (error) {
     console.error("CRITICAL SCRIPT ERROR CAUGHT:");
