@@ -59,7 +59,7 @@ jobs:
           echo "Access token successfully extracted and saved to environment!"
 
           - name: Call FHIR API
-          run: |   # the pipe character allows multiple lines below
+            run: |   # the pipe character allows multiple lines below
             echo "Making authenticated request to FHIR server..."
             curl -s -X GET "https://your-fhir-server.com/Patient" \
               -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
