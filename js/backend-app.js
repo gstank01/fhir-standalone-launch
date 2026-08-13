@@ -40,16 +40,14 @@ try {
 
     const encodedHeader = base64UrlEncode(JSON.stringify(header));
 
-    // Log the unsigned header and payload (which are safe/public)
-    
-    
+    console.log("Header:", encodedHeader);
+ 
     const encodedPayload = base64UrlEncode(JSON.stringify(payload));
     
     console.log("Encoded Payload:", encodedPayload);
     
     const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-    console.log("Input:", signingInput);
 
     // Sign using Node.js Native Crypto (RS512)
     console.log("Signing JWT using native Node.js crypto...");
