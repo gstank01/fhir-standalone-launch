@@ -29,7 +29,7 @@ jobs:
 
       - name: Request Access Token
         env:
-          TOKEN_ENDPOINT: ${{ secrets.AUDIENCEURL }} 
+          TOKEN_ENDPOINT: ${{ vars.AUDIENCEURL }} 
         run: |
           echo "Requesting access token from $TOKEN_ENDPOINT..."
           
