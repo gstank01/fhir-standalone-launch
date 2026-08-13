@@ -44,4 +44,16 @@ jobs:
           echo "Authorization Server Response:"
           echo "$HTTP_RESPONSE"
 
-        
+        #  Parse the JSON and extract the access_token field using jq
+          # The -r flag tells jq to output raw text instead of a JSON string with quotes
+          EXTRACTED_TOKEN=$(echo "$HTTP_RESPONSE" | jq -r '.access_token')
+          
+          # Safety check: Ensure the token isn't null or empty before proceeding
+          if [ "$EXTRACTED_TOKEN" == "null" ] || [ -z "$EXTRACTED_TOKEN" ]; then
+            echo "CRITICAL ERROR: Failed to extract access token! Check the server response above."
+            exit 1
+          fi
+          
+          # Save it to the GitHub Environment for the next workflow steps
+          echo "ACCESS_TOKEN=$EXTRACTED_TOKEN" >> $GITHUB_ENV
+          echo "Access token successfully extracted and saved to environment!"
