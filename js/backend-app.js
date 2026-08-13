@@ -42,6 +42,13 @@ try {
     const encodedPayload = base64UrlEncode(JSON.stringify(payload));
     const signingInput = `${encodedHeader}.${encodedPayload}`;
 
+    // Log the unsigned header and payload (which are safe/public)
+    console.log("Encoded Header:", encodedHeader);
+    console.log("Encoded Payload:", encodedPayload);
+
+    // Print length of signature to verify it generated without leaking the key
+    console.log("Signature length:", signature.length);
+
     // Sign using Node.js Native Crypto (RS512)
     console.log("Signing JWT using native Node.js crypto...");
     const sign = crypto.createSign('RSA-SHA512');
