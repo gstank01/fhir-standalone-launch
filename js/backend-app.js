@@ -47,7 +47,7 @@ try {
     console.log("Encoded Payload:", encodedPayload);
 
     // Print length of signature to verify it generated without leaking the key
-    console.log("Signature length:", signature.length);
+   
 
     // Sign using Node.js Native Crypto (RS512)
     console.log("Signing JWT using native Node.js crypto...");
@@ -61,6 +61,8 @@ try {
         .replace(/\//g, '_');
 
     const generatedToken = `${signingInput}.${signature}`;
+
+    console.log("Signature length:", signature.length);
 
     console.log("Client Assertion Token Generated Successfully!");
     console.log(generatedToken);
