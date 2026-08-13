@@ -44,7 +44,7 @@ jobs:
           echo "Authorization Server Response:"
           echo "$HTTP_RESPONSE"
 
-        #  Parse the JSON and extract the access_token field using jq
+          #  Parse the JSON and extract the access_token field using jq
           # The -r flag tells jq to output raw text instead of a JSON string with quotes
           EXTRACTED_TOKEN=$(echo "$HTTP_RESPONSE" | jq -r '.access_token')
           
