@@ -26,3 +26,22 @@ jobs:
           CLIENTID: ${{ vars.CLIENTID }}
           AUDIENCEURL: ${{ vars.AUDIENCEURL }}
         run: node js/backend-app.js
+
+      - name: Request Access Token
+        env:
+          TOKEN_ENDPOINT: ${{ secrets.AUDIENCEURL }} 
+        run: |
+          echo "Requesting access token from $TOKEN_ENDPOINT..."
+          
+          # Make the POST request and save the response into a variable
+          HTTP_RESPONSE=$(curl -s -X POST "$TOKEN_ENDPOINT" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=client_credentials" \
+            -d "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \
+            -d "client_assertion=${{ env.CLIENT_ASSERTION }}")
+          
+          # Print the response to the GitHub Actions console
+          echo "Authorization Server Response:"
+          echo "$HTTP_RESPONSE"
+
+        
