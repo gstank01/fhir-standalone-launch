@@ -59,7 +59,7 @@ jobs:
           echo "Access token successfully extracted and saved to environment!"
 
           - name: Call FHIR API
-        run: |
+          run: |
           echo "Making authenticated request to FHIR server..."
           
           # Make a GET request using the extracted token in the Authorization header
