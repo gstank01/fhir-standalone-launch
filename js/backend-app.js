@@ -39,15 +39,15 @@ try {
     };
 
     const encodedHeader = base64UrlEncode(JSON.stringify(header));
-    const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-    const signingInput = `${encodedHeader}.${encodedPayload}`;
 
     // Log the unsigned header and payload (which are safe/public)
     console.log("Encoded Header:", encodedHeader);
+    
+    const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+    
     console.log("Encoded Payload:", encodedPayload);
-
-    // Print length of signature to verify it generated without leaking the key
-   
+    
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
 
     // Sign using Node.js Native Crypto (RS512)
     console.log("Signing JWT using native Node.js crypto...");
@@ -61,7 +61,8 @@ try {
         .replace(/\//g, '_');
 
     const generatedToken = `${signingInput}.${signature}`;
-
+    
+    // Print length of signature to verify it generated without leaking the key
     console.log("Signature length:", signature.length);
 
     console.log("Client Assertion Token Generated Successfully!");
