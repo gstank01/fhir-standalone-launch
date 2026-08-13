@@ -1,5 +1,6 @@
 //const jsrsasign = require('jsrsasign'); library
 const crypto = require('crypto'); //Node native crypto module
+const fs = require('fs'); //allow writing to files
 
 try {
     console.log("--- STARTING BACKEND ASSERTION SCRIPT (NATIVE CRYPTO) ---");
@@ -67,6 +68,12 @@ try {
 
     console.log("Client Assertion Token Generated Successfully!");
     console.log(generatedToken);
+
+    // Check if running inside GitHub Actions, and write the token to the environment
+    if (process.env.GITHUB_ENV) {
+        fs.appendFileSync(process.env.GITHUB_ENV, `CLIENT_ASSERTION=${generatedToken}\n`);
+        console.log("Successfully exported CLIENT_ASSERTION to GitHub Environment.");
+    }
 
 } catch (error) {
     console.error("CRITICAL SCRIPT ERROR CAUGHT:");
