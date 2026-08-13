@@ -57,3 +57,12 @@ jobs:
           # Save it to the GitHub Environment for the next workflow steps
           echo "ACCESS_TOKEN=$EXTRACTED_TOKEN" >> $GITHUB_ENV
           echo "Access token successfully extracted and saved to environment!"
+
+          - name: Call FHIR API
+        run: |
+          echo "Making authenticated request to FHIR server..."
+          
+          # Make a GET request using the extracted token in the Authorization header
+          curl -s -X GET "https://your-fhir-server.com/Patient" \
+            -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
+            -H "Accept: application/json"
