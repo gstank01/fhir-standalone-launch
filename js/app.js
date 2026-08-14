@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', () => { // Wait for the HTML docum
     const confirmPatientSearchBtn = document.getElementById('confirmPatientSearchBtn');
     const confirmAppointmentFetchBtn = document.getElementById('confirmAppointmentFetchBtn');
 
+    // Initialize the referral UI module
+    if (typeof initReferralUI === 'function') {
+        initReferralUI();
+    }
     
     // ---???TO MOVED TO utils.js---
     const getVal = (id) => document.getElementById(id)?.value || ''; //Look up the element in the DOM tree by its ID (the IDs that were assigned in the HTML)
