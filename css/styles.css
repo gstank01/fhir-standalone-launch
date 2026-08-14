@@ -169,39 +169,9 @@ pre {
     color: #555;
 }
 
-/* ==========================================================================
-   5. Referral MODAL OVERLAYS & FORM TABLES
-   ========================================================================== */
-/* 1. Hide the modal completely by default */
-
-.referral-modal {
-    display: none; /* This is what stops it from printing on your dashboard! */
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent dark overlay */
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-}
-
-/* 2. Show the modal when JavaScript adds the 'active' class */
-
 .modal.active {
     display: flex; /* Makes it appear as a centered pop-up overlay */
 }
-
-/* Optional styling for the inner content box */
-.modal-content {
-    background: #ffffff;
-    padding: 25px;
-    border-radius: 8px;
-    width: 400px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-}
-
 
 .stage-header {
     margin-top: 15px;
