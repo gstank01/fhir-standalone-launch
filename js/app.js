@@ -5,6 +5,10 @@ document.addEventListener('DOMContentLoaded', () => { // Wait for the HTML docum
         return;
     }
 
+    if (typeof initReferralUI === 'function') {
+        initReferralUI();
+    }
+
     
     const launchBtn = document.getElementById('launchBtn');
     const cancelModalBtn = document.getElementById('cancelModalBtn');
