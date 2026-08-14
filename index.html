@@ -185,15 +185,15 @@
 
  <!-- STEP 5: PATIENT SEARCH & REFERRAL FETCH MODAL -->
     
-<div id="referralModal" class="referral-modal">
-    <div class="modal-content">
-        <h3>Patient Lookup</h3>
-        <p>Please enter patient identifier.</p>
+<div id="referralModal" class="modal-overlay">
+    <div class="modal">
+        <h2 class="modal-header">Patient Lookup</h2>
+        <p style="font-size: 14px; color: #555;">Please enter patient identifier:</p>
         
-        <input type="text" id="referralPatientIdentifier" placeholder="e.g., 123445" class="modal-input" />
+        <input type="text" id="referralPatientIdentifier" placeholder="e.g., 123445" class="param-input" style="margin: 15px 0;" />
         
         <div class="modal-actions">
-            <button id="cancelReferralBtn" class="second-btn">Cancel</button>
+            <button id="cancelReferralBtn" class="secondary">Cancel</button>
             <button id="startReferralFetchBtn" class="primary-btn">Get info</button>
         </div>
     </div>
