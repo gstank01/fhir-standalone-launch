@@ -27,7 +27,7 @@ function initReferralUI() {
         referralModal.classList.remove('active');
     });
 
-    // 4. When the user clicks "Fetch Data", grab the ID and start the sequence
+    // 4. When the user clicks "Get info", grab the ID and start the sequence
     startReferralFetchBtn.addEventListener('click', async () => {
         const identifier = referralIdentifierInput.value.trim();
         
