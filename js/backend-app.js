@@ -1,4 +1,4 @@
-//const jsrsasign = require('jsrsasign'); library
+//this code is used to generate client assertion
 const crypto = require('crypto'); //Node native crypto module
 const fs = require('fs'); //allow writing to files
 
