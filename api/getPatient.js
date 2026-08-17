@@ -1,29 +1,28 @@
-// api/getToken.js
-const crypto = require('crypto'); // Node native crypto module
+const crypto = require('crypto');
 
 export default async function handler(req, res) {
-    // Only allow POST requests for security
+    // 1. Ensure it's a POST request coming from your frontend
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
     try {
-        console.log("--- STARTING BACKEND ASSERTION GENERATION ---");
-        
-        // Vercel securely injects these from your Project Settings -> Environment Variables
+        console.log("--- STARTING VERCEL BACKEND WORKFLOW ---");
+
+        // 2. Read environment variables configured in your Vercel Dashboard
         const clientID = process.env.CLIENTID; 
-        const audienceUrl = process.env.AUDIENCEURL; 
+        const audienceUrl = process.env.AUDIENCEURL; // Token endpoint URL
         const privateKeyText = process.env.BACKEND_APP_PK; 
 
         if (!privateKeyText || !clientID || !audienceUrl) {
-            throw new Error("One or more required environment variables (CLIENTID, AUDIENCEURL, BACKEND_APP_PK) are empty!");
+            throw new Error("Missing required environment variables (CLIENTID, AUDIENCEURL, BACKEND_APP_PK)");
         }
 
-        // Construct header
+        // --- STEP A: Generate Client Assertion (JWT) ---
         const header = {
             "alg": "RS512",
             "typ": "JWT",
-            "kid": "myapp-key-3" // Make sure this matches your registered JWKS kid
+            "kid": "myapp-key-3"
         };
 
         const now = Math.floor(Date.now() / 1000);
@@ -31,7 +30,7 @@ export default async function handler(req, res) {
             iss: clientID,
             sub: clientID,
             aud: audienceUrl,
-            exp: now + 300, // Token valid for 5 minutes
+            exp: now + 300,
             jti: crypto.randomUUID().toUpperCase() 
         };
 
@@ -45,10 +44,8 @@ export default async function handler(req, res) {
 
         const encodedHeader = base64UrlEncode(JSON.stringify(header));
         const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-        
         const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-        // Sign using Node.js Native Crypto (RS512)
         const sign = crypto.createSign('RSA-SHA512');
         sign.update(signingInput);
         sign.end();
@@ -58,19 +55,44 @@ export default async function handler(req, res) {
             .replace(/\+/g, '-')
             .replace(/\//g, '_');
 
-        const generatedAssertion = `${signingInput}.${signature}`;
-        
-        console.log("Client Assertion Token Generated Successfully!");
+        const clientAssertion = `${signingInput}.${signature}`;
+        console.log("Step A: Client Assertion Generated Successfully.");
 
-        // Send the assertion back to the frontend (or we can use it directly in the next step)
+        // --- STEP B: Exchange Assertion for Access Token ---
+        console.log("Step B: Exchanging assertion for Access Token with FHIR server...");
+
+        const tokenRequestBody = new URLSearchParams({
+            grant_type: 'client_credentials',
+            client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+            client_assertion: clientAssertion
+        });
+
+        const tokenResponse = await fetch(audienceUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: tokenRequestBody.toString()
+        });
+
+        const tokenData = await tokenResponse.json();
+
+        if (!tokenResponse.ok || !tokenData.access_token) {
+            throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
+        }
+
+        const accessToken = tokenData.access_token;
+        console.log("Step B: Access Token Acquired Successfully!");
+
+        // Send back a success indicator (or proceed to Steps C & D to fetch patient info!)
         return res.status(200).json({ 
             success: true, 
-            assertion: generatedAssertion 
+            message: "Authentication chain completed on Vercel!",
+            hasToken: !!accessToken 
         });
 
     } catch (error) {
-        console.error("CRITICAL SCRIPT ERROR CAUGHT:", error);
-        // Send a proper HTTP 500 error back to the frontend instead of crashing
+        console.error("Backend Workflow Error:", error.message || error);
         return res.status(500).json({ 
             success: false, 
             error: error.message || "Internal Server Error" 
