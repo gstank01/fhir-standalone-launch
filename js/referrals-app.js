@@ -48,7 +48,7 @@ function initReferralUI() {
 
         // Re-enable the button when done
         startReferralFetchBtn.disabled = false;
-        startReferralFetchBtn.textContent = "Fetch Data";
+        startReferralFetchBtn.textContent = "Get info";
     });
 }
 
