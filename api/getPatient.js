@@ -58,6 +58,8 @@ export default async function handler(req, res) {
         const clientAssertion = `${signingInput}.${signature}`;
         console.log("Step A: Client Assertion Generated Successfully.");
 
+        console.log("Generated Client Assertion JWT:", clientAssertion);
+
         // --- STEP B: Exchange Assertion for Access Token ---
         console.log("Step B: Exchanging assertion for Access Token with FHIR server...");
 
