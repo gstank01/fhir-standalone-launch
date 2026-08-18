@@ -11,9 +11,11 @@ export default async function handler(req, res) {
         const clientID = process.env.CLIENTID; 
         const audienceUrl = process.env.AUDIENCEURL; 
         let privateKeyText = process.env.BACKEND_APP_KEY; 
+        const fhirUrl = process.env.FHIRURL; // <-- NEW: Grab your FHIR URL from Vercel
 
-        if (!privateKeyText || !clientID || !audienceUrl) {
-            throw new Error("Missing required environment variables.");
+        // Ensure all variables exist
+        if (!privateKeyText || !clientID || !audienceUrl || !fhirUrl) {
+            throw new Error("Missing required environment variables (Ensure FHIRURL is set).");
         }
 
         // VERCEL FIX: Restore escaped newlines in the private key
@@ -39,11 +41,6 @@ export default async function handler(req, res) {
         const encodedPayload = base64UrlEncode(JSON.stringify(payload));
         const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-        // --- DEBUG OUTPUT: JWT Components ---
-        console.log("--- DEBUG: JWT COMPONENTS ---");
-        console.log("Encoded Header:", encodedHeader);
-        console.log("Encoded Payload:", encodedPayload);
-
         const sign = crypto.createSign('RSA-SHA512');
         sign.update(signingInput);
         sign.end();
@@ -51,24 +48,12 @@ export default async function handler(req, res) {
         const signature = sign.sign(privateKeyText, 'base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
         const clientAssertion = `${signingInput}.${signature}`;
 
-        // --- DEBUG OUTPUT: Final JWT Client Assertion ---
-        console.log("--- DEBUG: FINAL JWT CLIENT ASSERTION ---");
-        console.log(clientAssertion);
-
-
         // --- STEP B: Exchange Assertion for Access Token ---
         const tokenRequestBody = new URLSearchParams({
             grant_type: 'client_credentials',
             client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
             client_assertion: clientAssertion
         });
-
-        // --- DEBUG OUTPUT: Full Outbound API Request ---
-        console.log("--- DEBUG: OUTBOUND TOKEN REQUEST ---");
-        console.log("Target URL:", audienceUrl);
-        console.log("Method: POST");
-        console.log("Headers: Content-Type: application/x-www-form-urlencoded");
-        console.log("Request Body Parameters:", tokenRequestBody.toString());
 
         const tokenResponse = await fetch(audienceUrl, {
             method: 'POST',
@@ -78,20 +63,38 @@ export default async function handler(req, res) {
 
         const tokenData = await tokenResponse.json();
 
-        // --- DEBUG OUTPUT: Exact Token Endpoint Response ---
-        console.log("--- DEBUG: TOKEN ENDPOINT RESPONSE ---");
-        console.log("Response Status:", tokenResponse.status, tokenResponse.statusText);
-        console.log("Response JSON Body:", JSON.stringify(tokenData, null, 2));
-
         if (!tokenResponse.ok || !tokenData.access_token) {
             throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
         }
 
-        // Success! Send it back to the browser.
+        const accessToken = tokenData.access_token;
+        console.log("--- DEBUG: Token acquired on Vercel successfully! ---");
+
+        // --- STEP C (MOVED TO BACKEND): Patient Lookup ---
+        const patientSearchUrl = `${fhirUrl}/Patient?identifier=${identifier}`;
+        console.log(`--- DEBUG: Fetching Patient with URL: ${patientSearchUrl} ---`);
+
+        const patientResponse = await fetch(patientSearchUrl, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        const patientBundle = await patientResponse.json();
+
+        if (!patientResponse.ok) {
+            throw new Error(`Patient lookup failed: ${JSON.stringify(patientBundle)}`);
+        }
+
+        console.log("--- DEBUG: Patient Lookup Bundle Received ---");
+
+        // Success! Send the actual Patient Bundle back to the browser
         return res.status(200).json({ 
             success: true, 
-            message: "Token acquired on Vercel successfully!",
-            token: tokenData.access_token,
+            message: "Patient data fetched successfully!",
+            patientBundle: patientBundle, // Pass the FHIR data back
             identifier: identifier
         });
 
