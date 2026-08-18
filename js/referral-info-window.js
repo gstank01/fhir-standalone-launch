@@ -1,3 +1,5 @@
+// js/json-inspect-window.js
+
 function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patientBundle) {
     // 1. Open a separate, independent browser window
     const inspectorWindow = window.open('', '_blank', 'width=950,height=750,scrollbars=yes,resizable=yes');
@@ -128,10 +130,9 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     margin-bottom: 10px;
                     border-radius: 4px;
                 }
-                /* Distinct styling for Episode of Care cards */
                 .episode-card {
                     background: #f8f9fa;
-                    border-left: 4px solid #28a745; /* Green border */
+                    border-left: 4px solid #28a745;
                     padding: 12px 15px;
                     margin-bottom: 10px;
                     border-radius: 4px;
@@ -168,11 +169,18 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                         ? encounterBundle.entry
                             .filter(e => e.resource && e.resource.resourceType === 'Encounter')
                             .map(e => {
+                                // 🚀 Extract Encounter Type intelligently using FHIR best practices
                                 let encounterType = 'N/A';
                                 if (e.resource.type && e.resource.type.length > 0) {
                                     const t = e.resource.type[0];
-                                    if (t.text) encounterType = t.text;
-                                    else if (t.coding && t.coding.length > 0) encounterType = t.coding[0].display || t.coding[0].code || 'N/A';
+                                    
+                                    if (t.coding && t.coding.length > 0 && t.coding[0].display) {
+                                        encounterType = t.coding[0].display; // 1st Choice: Canonical Display text
+                                    } else if (t.text) {
+                                        encounterType = t.text; // 2nd Choice: Raw root text
+                                    } else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
+                                        encounterType = t.coding[0].code; // 3rd Choice: The raw terminology code
+                                    }
                                 }
 
                                 let displayId = e.resource.id || 'N/A';
@@ -198,15 +206,19 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                         ? encounterBundle.entry
                             .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
                             .map(e => {
-                                // Extract Episode Type safely
+                                // 🚀 Extract Episode Type intelligently 
                                 let episodeType = 'N/A';
                                 if (e.resource.type && e.resource.type.length > 0) {
                                     const t = e.resource.type[0];
-                                    if (t.text) episodeType = t.text;
-                                    else if (t.coding && t.coding.length > 0) episodeType = t.coding[0].display || t.coding[0].code || 'N/A';
+                                    
+                                    if (t.coding && t.coding.length > 0 && t.coding[0].display) {
+                                        episodeType = t.coding[0].display;
+                                    } else if (t.text) {
+                                        episodeType = t.text;
+                                    } else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
+                                        episodeType = t.coding[0].code;
+                                    }
                                 }
-
-                                // Removed ID extraction and display from this block
 
                                 return `
                                     <div class="episode-card">
