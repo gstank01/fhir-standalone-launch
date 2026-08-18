@@ -153,7 +153,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                         ? encounterBundle.entry
                             .filter(e => e.resource && e.resource.resourceType === 'Encounter')
                             .map(e => {
-                                // Extract Encounter Type (display/text) safely
+                                // 1. Extract Encounter Type (display/text) safely
                                 let encounterType = 'N/A';
                                 if (e.resource.type && e.resource.type.length > 0) {
                                     const t = e.resource.type[0];
@@ -164,19 +164,21 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                                     }
                                 }
 
-                                // Extract Encounter Identifiers ([value]) safely
-                                let encounterIdentifiers = 'N/A';
+                                // 2. Extract Encounter Identifiers (NO BRACKETS, Fallback to logical ID)
+                                let displayId = e.resource.id || 'N/A'; // Fallback to logical ID
                                 if (e.resource.identifier && e.resource.identifier.length > 0) {
-                                    encounterIdentifiers = e.resource.identifier
+                                    const extractedValues = e.resource.identifier
                                         .map(id => id.value)
-                                        .filter(val => val)
-                                        .join(', ');
+                                        .filter(val => val); // Remove undefined/nulls
+                                        
+                                    if (extractedValues.length > 0) {
+                                        displayId = extractedValues.join(', '); // Overwrite with actual identifier value(s)
+                                    }
                                 }
 
                                 return `
                                     <div class="encounter-card">
-                                        <p><strong>Encounter ID:</strong> ${e.resource.id}</p>
-                                        <p><strong>Identifier(s):</strong> [${encounterIdentifiers}]</p>
+                                        <p><strong>Encounter ID:</strong> ${displayId}</p>
                                         <p><strong>Type:</strong> ${encounterType}</p>
                                         <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
                                     </div>
