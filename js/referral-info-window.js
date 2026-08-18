@@ -1,5 +1,3 @@
-// js/json-inspect-window.js
-
 function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patientBundle) {
     // 1. Open a separate, independent browser window
     const inspectorWindow = window.open('', '_blank', 'width=950,height=750,scrollbars=yes,resizable=yes');
@@ -9,22 +7,39 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
         return;
     }
 
-    // 2. Safely extract Patient details from the stored patientBundle
+    // 2. Safely extract Patient details and locate the RMH MRN from the stored patientBundle
     let patientName = "Unknown Patient";
     let patientGender = "N/A";
     let patientDob = "N/A";
-    let patientMrn = fhirId;
+    let patientMrn = fhirId; // Default fallback
 
     if (patientBundle && patientBundle.entry && patientBundle.entry.length > 0) {
         const patientResource = patientBundle.entry[0].resource;
         
+        // Extract Name
         if (patientResource.name && patientResource.name.length > 0) {
             const given = patientResource.name[0].given ? patientResource.name[0].given.join(' ') : '';
             const family = patientResource.name[0].family || '';
             patientName = `${given} ${family}`.trim();
         }
+        
         patientGender = patientResource.gender || "N/A";
         patientDob = patientResource.birthDate || "N/A";
+
+        // 🔍 Extract RMH MRN from identifiers array if available
+        if (patientResource.identifier && patientResource.identifier.length > 0) {
+            // You can look for a specific system or just grab the first valid value/identifier
+            // If you want to target a specific system URL, you can filter by e.g. e.system && e.system.includes('rmh')
+            const rmhIdentifier = patientResource.identifier.find(id => 
+                (id.system && id.system.toLowerCase().includes('rmh')) || id.value
+            );
+            
+            if (rmhIdentifier && rmhIdentifier.value) {
+                patientMrn = rmhIdentifier.value;
+            } else {
+                patientMrn = patientResource.identifier[0].value || fhirId;
+            }
+        }
     }
 
     // 3. Build the HTML layout for the separate window
@@ -113,7 +128,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     <div><strong>Patient Name:</strong> ${patientName}</div>
                     <div><strong>Gender:</strong> ${patientGender}</div>
                     <div><strong>DOB:</strong> ${patientDob}</div>
-                    <div><strong>FHIR ID / MRN:</strong> ${patientMrn}</div>
+                    <div><strong>RMH MRN / FHIR ID:</strong> ${patientMrn}</div>
                 </div>
             </div>
 
