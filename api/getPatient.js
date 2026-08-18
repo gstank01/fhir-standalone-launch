@@ -39,12 +39,22 @@ export default async function handler(req, res) {
         const encodedPayload = base64UrlEncode(JSON.stringify(payload));
         const signingInput = `${encodedHeader}.${encodedPayload}`;
 
+        // --- DEBUG OUTPUT: JWT Components ---
+        console.log("--- DEBUG: JWT COMPONENTS ---");
+        console.log("Encoded Header:", encodedHeader);
+        console.log("Encoded Payload:", encodedPayload);
+
         const sign = crypto.createSign('RSA-SHA512');
         sign.update(signingInput);
         sign.end();
 
         const signature = sign.sign(privateKeyText, 'base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
         const clientAssertion = `${signingInput}.${signature}`;
+
+        // --- DEBUG OUTPUT: Final JWT Client Assertion ---
+        console.log("--- DEBUG: FINAL JWT CLIENT ASSERTION ---");
+        console.log(clientAssertion);
+
 
         // --- STEP B: Exchange Assertion for Access Token ---
         const tokenRequestBody = new URLSearchParams({
@@ -53,6 +63,13 @@ export default async function handler(req, res) {
             client_assertion: clientAssertion
         });
 
+        // --- DEBUG OUTPUT: Full Outbound API Request ---
+        console.log("--- DEBUG: OUTBOUND TOKEN REQUEST ---");
+        console.log("Target URL:", audienceUrl);
+        console.log("Method: POST");
+        console.log("Headers: Content-Type: application/x-www-form-urlencoded");
+        console.log("Request Body Parameters:", tokenRequestBody.toString());
+
         const tokenResponse = await fetch(audienceUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -60,6 +77,11 @@ export default async function handler(req, res) {
         });
 
         const tokenData = await tokenResponse.json();
+
+        // --- DEBUG OUTPUT: Exact Token Endpoint Response ---
+        console.log("--- DEBUG: TOKEN ENDPOINT RESPONSE ---");
+        console.log("Response Status:", tokenResponse.status, tokenResponse.statusText);
+        console.log("Response JSON Body:", JSON.stringify(tokenData, null, 2));
 
         if (!tokenResponse.ok || !tokenData.access_token) {
             throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
