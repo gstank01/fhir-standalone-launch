@@ -7,7 +7,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
         return;
     }
 
-    // 2. Safely extract Patient details and locate the RMH MRN from the stored patientBundle
+    // 2. Safely extract Patient details and locate the specific RMHMRN identifier
     let patientName = "Unknown Patient";
     let patientGender = "N/A";
     let patientDob = "N/A";
@@ -22,21 +22,30 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
             const family = patientResource.name[0].family || '';
             patientName = `${given} ${family}`.trim();
         }
-        
         patientGender = patientResource.gender || "N/A";
         patientDob = patientResource.birthDate || "N/A";
 
-        // 🔍 Extract RMH MRN from identifiers array if available
+        // 🔍 Extract RMHMRN by checking the identifier type (text or coding)
         if (patientResource.identifier && patientResource.identifier.length > 0) {
-            // You can look for a specific system or just grab the first valid value/identifier
-            // If you want to target a specific system URL, you can filter by e.g. e.system && e.system.includes('rmh')
-            const rmhIdentifier = patientResource.identifier.find(id => 
-                (id.system && id.system.toLowerCase().includes('rmh')) || id.value
-            );
-            
+            const rmhIdentifier = patientResource.identifier.find(id => {
+                if (!id.type) return false;
+
+                // Check if type.text matches 'RMHMRN'
+                const matchText = id.type.text && id.type.text.toUpperCase() === 'RMHMRN';
+
+                // Check if any coding code or display matches 'RMHMRN'
+                const matchCoding = id.type.coding && id.type.coding.some(c => 
+                    (c.code && c.code.toUpperCase() === 'RMHMRN') || 
+                    (c.display && c.display.toUpperCase().includes('RMHMRN'))
+                );
+
+                return matchText || matchCoding;
+            });
+
             if (rmhIdentifier && rmhIdentifier.value) {
                 patientMrn = rmhIdentifier.value;
             } else {
+                // Fallback to the first available identifier value or original fhirId
                 patientMrn = patientResource.identifier[0].value || fhirId;
             }
         }
@@ -128,7 +137,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     <div><strong>Patient Name:</strong> ${patientName}</div>
                     <div><strong>Gender:</strong> ${patientGender}</div>
                     <div><strong>DOB:</strong> ${patientDob}</div>
-                    <div><strong>RMH MRN / FHIR ID:</strong> ${patientMrn}</div>
+                    <div><strong>RMH MRN:</strong> ${patientMrn}</div>
                 </div>
             </div>
 
