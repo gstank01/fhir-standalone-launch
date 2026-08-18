@@ -152,13 +152,36 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     encounterBundle && encounterBundle.entry && encounterBundle.entry.length > 0
                         ? encounterBundle.entry
                             .filter(e => e.resource && e.resource.resourceType === 'Encounter')
-                            .map(e => `
-                                <div class="encounter-card">
-                                    <p><strong>Encounter ID:</strong> ${e.resource.id}</p>
-                                    <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
-                                    <p><strong>Class:</strong> ${e.resource.class ? e.resource.class.display || e.resource.class.code : 'N/A'}</p>
-                                </div>
-                            `).join('')
+                            .map(e => {
+                                // Extract Encounter Type (display/text) safely
+                                let encounterType = 'N/A';
+                                if (e.resource.type && e.resource.type.length > 0) {
+                                    const t = e.resource.type[0];
+                                    if (t.text) {
+                                        encounterType = t.text;
+                                    } else if (t.coding && t.coding.length > 0) {
+                                        encounterType = t.coding[0].display || t.coding[0].code || 'N/A';
+                                    }
+                                }
+
+                                // Extract Encounter Identifiers ([value]) safely
+                                let encounterIdentifiers = 'N/A';
+                                if (e.resource.identifier && e.resource.identifier.length > 0) {
+                                    encounterIdentifiers = e.resource.identifier
+                                        .map(id => id.value)
+                                        .filter(val => val)
+                                        .join(', ');
+                                }
+
+                                return `
+                                    <div class="encounter-card">
+                                        <p><strong>Encounter ID:</strong> ${e.resource.id}</p>
+                                        <p><strong>Identifier(s):</strong> [${encounterIdentifiers}]</p>
+                                        <p><strong>Type:</strong> ${encounterType}</p>
+                                        <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
+                                    </div>
+                                `;
+                            }).join('')
                         : '<p>No encounter records found in this bundle.</p>'
                 }
             </div>
