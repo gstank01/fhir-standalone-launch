@@ -56,7 +56,7 @@ async function executeReferralWorkflow(identifier) {
         console.log("--- STARTING API CHAIN VIA VERCEL ---");
         console.log(`Sending patient identifier ${identifier} to Vercel...`);
 
-        // --- STEP A & B: Call Vercel to get the Access Token ---
+        // --- STEP A & B: Exchange assertion for Access Token via Vercel ---
         const response = await fetch('/api/getPatient', {
             method: 'POST',
             headers: {
@@ -71,14 +71,13 @@ async function executeReferralWorkflow(identifier) {
             throw new Error(data.error || "Failed to fetch token from backend.");
         }
 
-        // Capture the returned token into a variable!
         const accessToken = data.token;
         console.log("--- VERCEL RESPONDED SUCCESSFULLY! ---");
         console.log("Captured Access Token:", accessToken);
 
-        // --- STEP C: Construct the Patient Lookup API Call ---
-        // Replace this URL variable with your actual FHIR Base URL (e.g., from your CONFIG file)
-        const fhirBaseUrl = CONFIG.FHIR_BASE_URL; // or your hardcoded sandbox FHIR endpoint
+        // --- STEP C: Patient Lookup using FHIRURL and the entered identifier ---
+        // Ensure CONFIG.FHIRURL exists (matching your config structure)
+        const fhirBaseUrl = CONFIG.FHIRURL; 
         const patientSearchUrl = `${fhirBaseUrl}/Patient?identifier=${identifier}`;
 
         console.log(`Step C: Fetching Patient using URL: ${patientSearchUrl}`);
@@ -100,11 +99,13 @@ async function executeReferralWorkflow(identifier) {
         console.log("--- PATIENT LOOKUP SUCCESSFUL ---");
         console.log("Patient Bundle Data:", patientBundle);
 
-        alert("Success! Patient data retrieved using the Vercel token. Check your console!");
+        alert("Success! Patient data retrieved using your FHIRURL and identifier. Check your console!");
 
-        // --- STEP D: Next you can extract the FHIR ID and fetch encounters ---
-        // const fhirId = patientBundle.entry[0].resource.id;
-        // console.log("Extracted Patient FHIR ID:", fhirId);
+        // --- STEP D: Optional next step (e.g., extract FHIR ID for Encounters) ---
+        // if (patientBundle.entry && patientBundle.entry.length > 0) {
+        //     const fhirId = patientBundle.entry[0].resource.id;
+        //     console.log("Extracted Patient FHIR ID:", fhirId);
+        // }
 
         console.log("--- API CHAIN COMPLETE ---");
 
