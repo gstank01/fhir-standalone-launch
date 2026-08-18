@@ -128,6 +128,20 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     margin-bottom: 10px;
                     border-radius: 4px;
                 }
+                /* NEW: Distinct styling for Episode of Care cards */
+                .episode-card {
+                    background: #f8f9fa;
+                    border-left: 4px solid #28a745; /* Green border */
+                    padding: 12px 15px;
+                    margin-bottom: 10px;
+                    border-radius: 4px;
+                }
+                .section-header {
+                    margin-top: 30px;
+                    margin-bottom: 15px;
+                    border-bottom: 1px solid #ddd;
+                    padding-bottom: 5px;
+                }
             </style>
         </head>
         <body>
@@ -147,33 +161,24 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
             </ul>
 
             <div id="encounters-tab" class="tab-pane active">
-                <h3>Associated Clinical Visits</h3>
+                
+                <h3 class="section-header">Associated Clinical Visits (Encounters)</h3>
                 ${
-                    encounterBundle && encounterBundle.entry && encounterBundle.entry.length > 0
+                    encounterBundle && encounterBundle.entry && encounterBundle.entry.some(e => e.resource && e.resource.resourceType === 'Encounter')
                         ? encounterBundle.entry
                             .filter(e => e.resource && e.resource.resourceType === 'Encounter')
                             .map(e => {
-                                // 1. Extract Encounter Type (display/text) safely
                                 let encounterType = 'N/A';
                                 if (e.resource.type && e.resource.type.length > 0) {
                                     const t = e.resource.type[0];
-                                    if (t.text) {
-                                        encounterType = t.text;
-                                    } else if (t.coding && t.coding.length > 0) {
-                                        encounterType = t.coding[0].display || t.coding[0].code || 'N/A';
-                                    }
+                                    if (t.text) encounterType = t.text;
+                                    else if (t.coding && t.coding.length > 0) encounterType = t.coding[0].display || t.coding[0].code || 'N/A';
                                 }
 
-                                // 2. Extract Encounter Identifiers (NO BRACKETS, Fallback to logical ID)
-                                let displayId = e.resource.id || 'N/A'; // Fallback to logical ID
+                                let displayId = e.resource.id || 'N/A';
                                 if (e.resource.identifier && e.resource.identifier.length > 0) {
-                                    const extractedValues = e.resource.identifier
-                                        .map(id => id.value)
-                                        .filter(val => val); // Remove undefined/nulls
-                                        
-                                    if (extractedValues.length > 0) {
-                                        displayId = extractedValues.join(', '); // Overwrite with actual identifier value(s)
-                                    }
+                                    const extractedValues = e.resource.identifier.map(id => id.value).filter(val => val);
+                                    if (extractedValues.length > 0) displayId = extractedValues.join(', ');
                                 }
 
                                 return `
@@ -186,6 +191,39 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                             }).join('')
                         : '<p>No encounter records found in this bundle.</p>'
                 }
+
+                <h3 class="section-header">Episodes of Care</h3>
+                ${
+                    encounterBundle && encounterBundle.entry && encounterBundle.entry.some(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
+                        ? encounterBundle.entry
+                            .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
+                            .map(e => {
+                                // Extract Episode Type safely
+                                let episodeType = 'N/A';
+                                if (e.resource.type && e.resource.type.length > 0) {
+                                    const t = e.resource.type[0];
+                                    if (t.text) episodeType = t.text;
+                                    else if (t.coding && t.coding.length > 0) episodeType = t.coding[0].display || t.coding[0].code || 'N/A';
+                                }
+
+                                // Extract Episode Identifiers safely
+                                let displayId = e.resource.id || 'N/A';
+                                if (e.resource.identifier && e.resource.identifier.length > 0) {
+                                    const extractedValues = e.resource.identifier.map(id => id.value).filter(val => val);
+                                    if (extractedValues.length > 0) displayId = extractedValues.join(', ');
+                                }
+
+                                return `
+                                    <div class="episode-card">
+                                        <p><strong>Episode ID:</strong> ${displayId}</p>
+                                        <p><strong>Type:</strong> ${episodeType}</p>
+                                        <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
+                                    </div>
+                                `;
+                            }).join('')
+                        : '<p>No Episode of Care records found in this bundle.</p>'
+                }
+
             </div>
 
             <div id="raw-json-tab" class="tab-pane">
