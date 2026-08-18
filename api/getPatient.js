@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
         const clientID = process.env.CLIENTID; 
         const audienceUrl = process.env.AUDIENCEURL; 
-        let privateKeyText = process.env.BACKEND_APP_PK; 
+        let privateKeyText = process.env.BACKEND_APP_KEY; 
 
         if (!privateKeyText || !clientID || !audienceUrl) {
             throw new Error("Missing required environment variables.");
