@@ -123,7 +123,7 @@ async function executeReferralWorkflow(identifier) {
             log("Opening Encounter Record in JSON inspector window...");
 
             // Pass the Encounter Bundle to your pop-up window
-            openJsonInspectionWindow(`Encounters & Episodes for MRN: ${identifier}`, fhirId, encounterBundle);
+            openReferralInspectorWindow(`Encounters & Patient Banner for MRN: ${identifier}`, fhirId, encounterBundle, patientBundle);
 
         } else {
             log("WARNING: No matching patient resource found for the given identifier.");
