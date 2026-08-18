@@ -1,3 +1,5 @@
+// js/referral.js
+
 function initReferralUI() {
     // 1. Get references to our DOM elements
     const btnReferralInfo = document.getElementById('btn-referral-info');
@@ -13,7 +15,7 @@ function initReferralUI() {
     btnReferralInfo.addEventListener('click', () => {
         referralIdentifierInput.value = ''; // clear out old inputs
         referralModal.classList.add('active'); 
-        
+
         // Auto-focus the input box for better UX
         setTimeout(() => {
             referralIdentifierInput.focus();
@@ -25,10 +27,10 @@ function initReferralUI() {
         referralModal.classList.remove('active');
     });
 
-    // 4. When the user clicks "Get info", grab the ID and start the sequence
+    // 4. When the user clicks "Fetch Data", grab the ID and start the sequence
     startReferralFetchBtn.addEventListener('click', async () => {
         const identifier = referralIdentifierInput.value.trim();
-        
+
         if (!identifier) {
             alert('Please enter a patient identifier.');
             return;
@@ -38,9 +40,9 @@ function initReferralUI() {
         referralModal.classList.remove('active');
         startReferralFetchBtn.disabled = true;
         startReferralFetchBtn.textContent = "Fetching...";
-        
+
         console.log(`[Referral Flow] Starting sequence for identifier: ${identifier}`);
-        
+
         // Start the API chain and wait for it to finish
         await executeReferralWorkflow(identifier);
 
@@ -53,11 +55,11 @@ function initReferralUI() {
 // The master function for the 4-step sequence
 async function executeReferralWorkflow(identifier) {
     try {
-        console.log("--- STARTING API CHAIN VIA VERCEL ---");
-        console.log(`Sending patient identifier ${identifier} to Vercel...`);
+        console.log("--- STARTING API CHAIN VIA Vercel ---");
 
-        // --- STEP A & B: Exchange assertion for Access Token via Vercel ---
-        const response = await fetch('/api/getPatient', {
+        // Step A & B: Get Access Token from your backend (Vercel)
+        console.log("Step A & B: Requesting Access Token...");
+        const tokenResponse = await fetch('/api/getPatient', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -65,28 +67,25 @@ async function executeReferralWorkflow(identifier) {
             body: JSON.stringify({ identifier: identifier })
         });
 
-        const data = await response.json();
+        const tokenData = await tokenResponse.json();
 
-        if (!response.ok) {
-            throw new Error(data.error || "Failed to fetch token from backend.");
+        if (!tokenResponse.ok) {
+            throw new Error(tokenData.error || "Failed to acquire token.");
         }
 
-        const accessToken = data.token;
-        console.log("--- VERCEL RESPONDED SUCCESSFULLY! ---");
-        console.log("Captured Access Token:", accessToken);
+        const accessToken = tokenData.token;
+        console.log("Access Token acquired successfully.");
 
-        // --- STEP C: Patient Lookup using FHIRURL and the entered identifier ---
-        // Ensure CONFIG.FHIRURL exists (matching your config structure)
-        const fhirBaseUrl = CONFIG.FHIRURL; 
-        const patientSearchUrl = `${fhirBaseUrl}/Patient?identifier=${identifier}`;
-
-        console.log(`Step C: Fetching Patient using URL: ${patientSearchUrl}`);
+        // Step C: Patient Lookup using FHIRURL and the user-entered identifier
+        // FHIRURL is expected to be defined in your config (e.g., CONFIG.FHIRURL)
+        const patientSearchUrl = `${CONFIG.FHIRURL}/Patient?identifier=${identifier}`;
+        console.log(`Step C: Fetching Patient with URL: ${patientSearchUrl}`);
 
         const patientResponse = await fetch(patientSearchUrl, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
-                'Accept': 'application/fhir+json'
+                'Accept': 'application/json' // Accounts for application/json accept header requirement
             }
         });
 
@@ -96,16 +95,18 @@ async function executeReferralWorkflow(identifier) {
             throw new Error(`Patient lookup failed: ${JSON.stringify(patientBundle)}`);
         }
 
-        console.log("--- PATIENT LOOKUP SUCCESSFUL ---");
-        console.log("Patient Bundle Data:", patientBundle);
+        console.log("Patient Lookup Bundle Received:", patientBundle);
 
-        alert("Success! Patient data retrieved using your FHIRURL and identifier. Check your console!");
-
-        // --- STEP D: Optional next step (e.g., extract FHIR ID for Encounters) ---
-        // if (patientBundle.entry && patientBundle.entry.length > 0) {
-        //     const fhirId = patientBundle.entry[0].resource.id;
-        //     console.log("Extracted Patient FHIR ID:", fhirId);
-        // }
+        // Step D: Encounter Fetch (Placeholder utilising extracted FHIR ID if entries exist)
+        if (patientBundle.entry && patientBundle.entry.length > 0) {
+            const fhirId = patientBundle.entry[0].resource.id;
+            console.log(`Step D: Found Patient FHIR ID: ${fhirId}`);
+            
+            // You can construct your subsequent encounter call here:
+            // const encounterUrl = `${CONFIG.FHIRURL}/Encounter?patient=${fhirId}`;
+        } else {
+            console.warn("No matching patient resource found for the given identifier.");
+        }
 
         console.log("--- API CHAIN COMPLETE ---");
 
