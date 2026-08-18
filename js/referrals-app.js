@@ -55,27 +55,33 @@ function initReferralUI() {
 // The master function for the 4-step sequence
 async function executeReferralWorkflow(identifier) {
     try {
-        console.log("--- STARTING API CHAIN ---");
+        console.log("--- STARTING API CHAIN VIA VERCEL ---");
+        console.log(`Sending patient identifier ${identifier} to Vercel...`);
+
+        // Send a POST request to our new Vercel backend
+        const response = await fetch('/api/getPatient', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            // Send the user's input safely in the body of the request
+            body: JSON.stringify({ identifier: identifier })
+        });
+
+        const data = await response.json();
+
+        // Check if Vercel encountered an error
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch from backend.");
+        }
+
+        console.log("--- VERCEL RESPONDED SUCCESSFULLY! ---");
+        console.log("Vercel Data Received:", data);
         
-        // Step A: Generate the Assertion (JWT)
-        console.log("Step A: Generating Client Assertion...");
-        // const assertion = await generateClientAssertion();
-        
-        // Step B: Get the Token
-        console.log("Step B: Exchanging assertion for Access Token...");
-        // const token = await getAccessToken(assertion);
-        
-        // Step C: Patient Lookup
-        console.log(`Step C: Fetching Patient with identifier=${identifier}...`);
-        // const fhirId = await getPatientFhirId(identifier, token);
-        
-        // Step D: Encounter Fetch
-        console.log("Step D: Fetching Encounters using FHIR ID...");
-        // const encounters = await getEncounters(fhirId, token);
-        
-        console.log("--- API CHAIN COMPLETE ---");
-        
+        alert("Success! Check your browser console to see the data from Vercel!");
+
     } catch (error) {
         console.error("Referral Workflow Failed:", error);
+        alert(`Error: ${error.message}`);
     }
 }
