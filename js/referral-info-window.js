@@ -1,6 +1,6 @@
-// js/referral-inspector.js
+// js/json-inspect-window.js
 
-function openReferralInspectorWindow(titleText, fhirId, encounterBundle) {
+function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patientBundle) {
     // 1. Open a separate, independent browser window
     const inspectorWindow = window.open('', '_blank', 'width=950,height=750,scrollbars=yes,resizable=yes');
     
@@ -9,25 +9,22 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle) {
         return;
     }
 
-    // 2. Safely extract Patient details from the encounter bundle if available
+    // 2. Safely extract Patient details from the stored patientBundle
     let patientName = "Unknown Patient";
     let patientGender = "N/A";
     let patientDob = "N/A";
     let patientMrn = fhirId;
 
-    if (encounterBundle && encounterBundle.entry) {
-        // Search through entries to find a Patient resource if included
-        const patientEntry = encounterBundle.entry.find(e => e.resource && e.resource.resourceType === 'Patient');
-        if (patientEntry && patientEntry.resource) {
-            const p = patientEntry.resource;
-            if (p.name && p.name.length > 0) {
-                const given = p.name[0].given ? p.name[0].given.join(' ') : '';
-                const family = p.name[0].family || '';
-                patientName = `${given} ${family}`.trim();
-            }
-            patientGender = p.gender || "N/A";
-            patientDob = p.birthDate || "N/A";
+    if (patientBundle && patientBundle.entry && patientBundle.entry.length > 0) {
+        const patientResource = patientBundle.entry[0].resource;
+        
+        if (patientResource.name && patientResource.name.length > 0) {
+            const given = patientResource.name[0].given ? patientResource.name[0].given.join(' ') : '';
+            const family = patientResource.name[0].family || '';
+            patientName = `${given} ${family}`.trim();
         }
+        patientGender = patientResource.gender || "N/A";
+        patientDob = patientResource.birthDate || "N/A";
     }
 
     // 3. Build the HTML layout for the separate window
@@ -152,7 +149,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle) {
                     document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
                     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
                     
-                    document.getElementById(tabId).classList.add('action') || document.getElementById(tabId).classList.add('active');
+                    document.getElementById(tabId).classList.add('active');
                     event.currentTarget.classList.add('active');
                 }
             </script>
