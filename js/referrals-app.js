@@ -50,13 +50,13 @@ function initReferralUI() {
     });
 }
 
-// The master function for the full sequence
+// The master function for the workflow
 async function executeReferralWorkflow(identifier) {
     try {
         log("--- STARTING API CHAIN VIA Vercel ---");
         log(`Initiating workflow for identifier: ${identifier}`);
 
-        // Step A & B: Ask Vercel backend to securely acquire the Access Token
+        // Step A & B: Ask Vercel backend to acquire Access Token and return FHIRURL
         log("Step A & B: Asking Vercel to securely acquire Access Token...");
         const tokenResponse = await fetch('/api/getPatient', {
             method: 'POST',
@@ -69,11 +69,17 @@ async function executeReferralWorkflow(identifier) {
             throw new Error(tokenData.error || "Failed to acquire token.");
         }
 
-        const accessToken = tokenData.token; // Ensure your Vercel backend returns { token: ... }
-        log("SUCCESS: Access Token acquired.");
+        const accessToken = tokenData.token;
+        const fhirUrl = tokenData.fhirUrl; // 👈 Grab the FHIR base URL passed from Vercel env!
+        
+        if (!fhirUrl) {
+            throw new Error("FHIRURL environment variable is missing on the Vercel backend.");
+        }
 
-        // Step C: Patient Lookup using CONFIG.FHIRURL
-        const patientSearchUrl = `${CONFIG.FHIRURL}/Patient?identifier=${identifier}`;
+        log("SUCCESS: Access Token and FHIR URL acquired from Vercel.");
+
+        // Step C: Patient Lookup using the Vercel FHIRURL variable
+        const patientSearchUrl = `${fhirUrl}/Patient?identifier=${identifier}`;
         log(`Step C: Fetching Patient -> ${patientSearchUrl}`);
 
         const patientResponse = await fetch(patientSearchUrl, {
@@ -91,13 +97,13 @@ async function executeReferralWorkflow(identifier) {
 
         log("SUCCESS: Patient Lookup Bundle Received.");
 
-        // Step D: Extract FHIR ID & Construct Encounter Request
+        // Step D: Extract FHIR ID & Fetch Encounters
         if (patientBundle.entry && patientBundle.entry.length > 0) {
             const fhirId = patientBundle.entry[0].resource.id;
             log(`Step D: Extracted logical Patient FHIR ID: ${fhirId}`);
 
-            // Step E: Construct Encounter URL using CONFIG.FHIRURL and extracted fhirId
-            const encounterUrl = `${CONFIG.FHIRURL}/Encounter?patient=${fhirId}&_include=Encounter:EpisodeOfCare`;
+            // Step E: Construct the Encounter URL using the same fhirUrl and token
+            const encounterUrl = `${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:EpisodeOfCare`;
             log(`Step E: Fetching Encounters -> ${encounterUrl}`);
 
             const encounterResponse = await fetch(encounterUrl, {
