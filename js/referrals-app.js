@@ -50,52 +50,83 @@ function initReferralUI() {
     });
 }
 
-// The master function for the 4-step sequence
+// The master function for the full sequence
 async function executeReferralWorkflow(identifier) {
     try {
-        // Use the front-end logger so the user sees the progress!
         log("--- STARTING API CHAIN VIA Vercel ---");
-        log(`Initiating patient lookup for identifier: ${identifier}`);
+        log(`Initiating workflow for identifier: ${identifier}`);
 
-        // Step A, B, & C: Handled securely by Vercel!
-        log("Asking Vercel to securely acquire Token and execute Patient Search...");
-        
-        const response = await fetch('/api/getPatient', {
+        // Step A & B: Ask Vercel backend to securely acquire the Access Token
+        log("Step A & B: Asking Vercel to securely acquire Access Token...");
+        const tokenResponse = await fetch('/api/getPatient', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ identifier: identifier })
         });
 
-        const data = await response.json();
-
-        // Check if Vercel threw a 500 error
-        if (!response.ok) {
-            throw new Error(data.error || "Failed to fetch patient data from Vercel.");
+        const tokenData = await tokenResponse.json();
+        if (!tokenResponse.ok) {
+            throw new Error(tokenData.error || "Failed to acquire token.");
         }
 
-        const patientBundle = data.patientBundle;
-        log("SUCCESS: Patient Lookup Bundle Received from Vercel.");
+        const accessToken = tokenData.token; // Ensure your Vercel backend returns { token: ... }
+        log("SUCCESS: Access Token acquired.");
 
-        // Step D: Extracting FHIR ID if entries exist
-        if (patientBundle && patientBundle.entry && patientBundle.entry.length > 0) {
+        // Step C: Patient Lookup using CONFIG.FHIRURL
+        const patientSearchUrl = `${CONFIG.FHIRURL}/Patient?identifier=${identifier}`;
+        log(`Step C: Fetching Patient -> ${patientSearchUrl}`);
+
+        const patientResponse = await fetch(patientSearchUrl, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        const patientBundle = await patientResponse.json();
+        if (!patientResponse.ok) {
+            throw new Error(`Patient lookup failed: ${JSON.stringify(patientBundle)}`);
+        }
+
+        log("SUCCESS: Patient Lookup Bundle Received.");
+
+        // Step D: Extract FHIR ID & Construct Encounter Request
+        if (patientBundle.entry && patientBundle.entry.length > 0) {
             const fhirId = patientBundle.entry[0].resource.id;
-            log(`Step D: Found logical Patient FHIR ID: ${fhirId}`);
-            log("Opening Patient Record in JSON inspector window...");
-            
-            // Trigger the pop-up window to display the JSON
-            openJsonInspectionWindow(`Patient Record: ${identifier}`, fhirId, patientBundle);
-            
+            log(`Step D: Extracted logical Patient FHIR ID: ${fhirId}`);
+
+            // Step E: Construct Encounter URL using CONFIG.FHIRURL and extracted fhirId
+            const encounterUrl = `${CONFIG.FHIRURL}/Encounter?patient=${fhirId}&_include=Encounter:EpisodeOfCare`;
+            log(`Step E: Fetching Encounters -> ${encounterUrl}`);
+
+            const encounterResponse = await fetch(encounterUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Accept': 'application/json'
+                }
+            });
+
+            const encounterBundle = await encounterResponse.json();
+            if (!encounterResponse.ok) {
+                throw new Error(`Encounter lookup failed: ${JSON.stringify(encounterBundle)}`);
+            }
+
+            log("SUCCESS: Encounter Bundle Received.");
+            log("Opening Encounter Record in JSON inspector window...");
+
+            // Pass the Encounter Bundle to your pop-up window
+            openJsonInspectionWindow(`Encounters & Episodes for MRN: ${identifier}`, fhirId, encounterBundle);
+
         } else {
             log("WARNING: No matching patient resource found for the given identifier.");
             alert("Patient not found in EHR.");
-        } 
+        }
 
         log("--- API CHAIN COMPLETE ---");
 
     } catch (error) {
-        // Log the error to the front-end box, but also keep console.error for deep debugging
         log(`<span style="color: red;">ERROR: Referral Workflow Failed: ${error.message}</span>`);
         console.error("Referral Workflow Failed:", error);
         alert(`Error: ${error.message}`);
