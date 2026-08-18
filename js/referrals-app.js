@@ -50,7 +50,6 @@ function initReferralUI() {
     });
 }
 
-// The master function for the sequence
 async function executeReferralWorkflow(identifier) {
     try {
         console.log("--- STARTING API CHAIN VIA Vercel ---");
@@ -67,7 +66,7 @@ async function executeReferralWorkflow(identifier) {
 
         const data = await response.json();
 
-        // Check if Vercel threw a 500 error
+        // Check if Vercel threw a 500 or 400 error
         if (!response.ok) {
             throw new Error(data.error || "Failed to fetch patient data from Vercel.");
         }
@@ -80,12 +79,15 @@ async function executeReferralWorkflow(identifier) {
             const fhirId = patientBundle.entry[0].resource.id;
             console.log(`Step D: Found Patient FHIR ID: ${fhirId}`);
             
+            // 🚀 NEW: Trigger the pop-up window to display the JSON
+            openJsonInspectionWindow(`Patient Record: ${identifier}`, fhirId, patientBundle);
+
             // You can construct your subsequent encounter call here...
             
         } else {
             console.warn("No matching patient resource found for the given identifier.");
             alert("Patient not found in EHR.");
-        }
+        } 
 
         console.log("--- API CHAIN COMPLETE ---");
 
