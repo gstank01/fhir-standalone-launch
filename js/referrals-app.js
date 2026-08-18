@@ -50,12 +50,16 @@ function initReferralUI() {
     });
 }
 
+// The master function for the 4-step sequence
 async function executeReferralWorkflow(identifier) {
     try {
-        console.log("--- STARTING API CHAIN VIA Vercel ---");
+        // Use the front-end logger so the user sees the progress!
+        log("--- STARTING API CHAIN VIA Vercel ---");
+        log(`Initiating patient lookup for identifier: ${identifier}`);
 
         // Step A, B, & C: Handled securely by Vercel!
-        console.log("Asking Vercel to get Token and execute Patient Lookup...");
+        log("Asking Vercel to securely acquire Token and execute Patient Search...");
+        
         const response = await fetch('/api/getPatient', {
             method: 'POST',
             headers: {
@@ -66,32 +70,33 @@ async function executeReferralWorkflow(identifier) {
 
         const data = await response.json();
 
-        // Check if Vercel threw a 500 or 400 error
+        // Check if Vercel threw a 500 error
         if (!response.ok) {
             throw new Error(data.error || "Failed to fetch patient data from Vercel.");
         }
 
         const patientBundle = data.patientBundle;
-        console.log("Patient Lookup Bundle Received from Vercel:", patientBundle);
+        log("SUCCESS: Patient Lookup Bundle Received from Vercel.");
 
-        // Step D: Encounter Fetch (Extracting FHIR ID if entries exist)
+        // Step D: Extracting FHIR ID if entries exist
         if (patientBundle && patientBundle.entry && patientBundle.entry.length > 0) {
             const fhirId = patientBundle.entry[0].resource.id;
-            console.log(`Step D: Found Patient FHIR ID: ${fhirId}`);
+            log(`Step D: Found logical Patient FHIR ID: ${fhirId}`);
+            log("Opening Patient Record in JSON inspector window...");
             
-            // 🚀 NEW: Trigger the pop-up window to display the JSON
+            // Trigger the pop-up window to display the JSON
             openJsonInspectionWindow(`Patient Record: ${identifier}`, fhirId, patientBundle);
-
-            // You can construct your subsequent encounter call here...
             
         } else {
-            console.warn("No matching patient resource found for the given identifier.");
+            log("WARNING: No matching patient resource found for the given identifier.");
             alert("Patient not found in EHR.");
         } 
 
-        console.log("--- API CHAIN COMPLETE ---");
+        log("--- API CHAIN COMPLETE ---");
 
     } catch (error) {
+        // Log the error to the front-end box, but also keep console.error for deep debugging
+        log(`<span style="color: red;">ERROR: Referral Workflow Failed: ${error.message}</span>`);
         console.error("Referral Workflow Failed:", error);
         alert(`Error: ${error.message}`);
     }
