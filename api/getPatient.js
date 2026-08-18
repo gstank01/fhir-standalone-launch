@@ -94,7 +94,9 @@ export default async function handler(req, res) {
         return res.status(200).json({ 
             success: true, 
             message: "Patient data fetched successfully!",
-            patientBundle: patientBundle, // Pass the FHIR data back
+            token: accessToken,               // 👈 Ensure your token is returned if needed
+            fhirUrl: process.env.FHIRURL,     // 👈 Pass the Vercel env variable down to the frontend!
+            patientBundle: patientBundle,     // Pass the FHIR data back
             identifier: identifier
         });
 
