@@ -218,21 +218,23 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     ? encounterBundle.entry
                         .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
                         .map(e => {
-                            // Extract Episode Type
+                            // Extract ALL Episode Types from the extension array
                             let episodeType = 'N/A';
 
                             if (e.resource.extension && e.resource.extension.length > 0) {
-                                const ex = e.resource.extension[0];
-    
-                                if (ex.valueString) {
-                                    episodeType = ex.valueString;
-                                }
-                            } // <-- FIX: Closed the IF statement right here
+                                // FIX: Map over all extensions, grab their valueString, and filter out empty values
+                                const types = e.resource.extension
+                                    .map(ex => ex.valueString)
+                                    .filter(val => val); // Removes undefined or null values
 
-                            // This return statement is now outside the if-block and will always run
+                                if (types.length > 0) {
+                                    episodeType = types.join('<br>'); // Joins them with a HTML line break
+                                }
+                            }
+
                             return `
                                 <div class="episode-card">
-                                    <p><strong>Type:</strong> ${episodeType}</p>
+                                    <p><strong>Type:</strong><br>${episodeType}</p>
                                     <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
                                 </div>
                             `;
