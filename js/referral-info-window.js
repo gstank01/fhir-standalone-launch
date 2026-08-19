@@ -216,35 +216,30 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                 ${
                     encounterBundle && encounterBundle.entry && encounterBundle.entry.some(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
                     ? encounterBundle.entry
-                    .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
-                    .map(e => {
-                    // Extract Episode Type
-                    let episodeType = 'N/A';
-            
-                    if (e.resource.extension && e.resource.extension.length > 0) {
-                        const ex = e.resource.extension[0];
-                
-                        // FIX: Read valueString directly from the extension object
-                        if (ex.valueString) {
-                             episodeType = ex.valueString;
-                        }
-                        
-                                    //} else if (t.text) {
-                                        //episodeType = t.text;
-                                    //} else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
-                                        //episodeType = t.coding[0].code;
-                                    //}
-                                }
+                        .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
+                        .map(e => {
+                            // Extract Episode Type
+                            let episodeType = 'N/A';
 
-                                return `
-                                    <div class="episode-card">
-                                        <p><strong>Type:</strong> ${episodeType}</p>
-                                        <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
-                                    </div>
-                                `;
-                            }).join('')
-                        : '<p>No Episode of Care records found in this bundle.</p>'
+                            if (e.resource.extension && e.resource.extension.length > 0) {
+                                const ex = e.resource.extension[0];
+    
+                                if (ex.valueString) {
+                                    episodeType = ex.valueString;
+                                }
+                            } // <-- FIX: Closed the IF statement right here
+
+                            // This return statement is now outside the if-block and will always run
+                            return `
+                                <div class="episode-card">
+                                    <p><strong>Type:</strong> ${episodeType}</p>
+                                    <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
+                                </div>
+                            `;
+                        }).join('')
+                    : '<p>No Episode of Care records found in this bundle.</p>'
                 }
+
 
             </div>
 
