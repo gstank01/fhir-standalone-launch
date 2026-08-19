@@ -27,7 +27,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
         patientGender = patientResource.gender || "N/A";
         patientDob = patientResource.birthDate || "N/A";
 
-        // 🔍 Extract RMHMRN by checking the identifier type (text or coding)
+        // Extract RMHMRN by checking the identifier type (text or coding)
         if (patientResource.identifier && patientResource.identifier.length > 0) {
             const rmhIdentifier = patientResource.identifier.find(id => {
                 if (!id.type) return false;
@@ -163,24 +163,25 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
 
             <div id="encounters-tab" class="tab-pane active">
                 
-                <h3 class="section-header">Associated Clinical Visits (Encounters)</h3>
+                <h3 class="section-header">Associated Encounter</h3>
                 ${
                     encounterBundle && encounterBundle.entry && encounterBundle.entry.some(e => e.resource && e.resource.resourceType === 'Encounter')
                         ? encounterBundle.entry
                             .filter(e => e.resource && e.resource.resourceType === 'Encounter')
                             .map(e => {
-                                // 🚀 Extract Encounter Type intelligently using FHIR best practices
+                                //Extract Encounter Type 
                                 let encounterType = 'N/A';
                                 if (e.resource.type && e.resource.type.length > 0) {
                                     const t = e.resource.type[0];
                                     
                                     if (t.coding && t.coding.length > 0 && t.coding[0].display) {
-                                        encounterType = t.coding[0].display; // 1st Choice: Canonical Display text
-                                    } else if (t.text) {
-                                        encounterType = t.text; // 2nd Choice: Raw root text
-                                    } else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
-                                        encounterType = t.coding[0].code; // 3rd Choice: The raw terminology code
-                                    }
+                                        encounterType = t.coding[0].display; // Display  encounter -> type -> coding -> display
+                                    }    
+                                    //} else if (t.text) {
+                                       // encounterType = t.text; // 2nd Choice: Raw root text
+                                    //} else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
+                                        //encounterType = t.coding[0].code; // 3rd Choice: The raw terminology code
+                                    //}
                                 }
 
                                 let displayId = e.resource.id || 'N/A';
