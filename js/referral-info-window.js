@@ -147,7 +147,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
         </head>
         <body>
             <div class="header-banner">
-                <h2>📋 Referral & Encounter Inspector</h2>
+                <h2>Referral info</h2>
                 <div class="patient-info-grid">
                     <div><strong>Patient Name:</strong> ${patientName}</div>
                     <div><strong>Gender:</strong> ${patientGender}</div>
@@ -190,11 +190,22 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                                     if (extractedValues.length > 0) displayId = extractedValues.join(', ');
                                 }
 
+                                let practitioner = e.resource.id || 'N/A';
+
+                                if (e.resource.participant && e.resource.participant.length > 0) {
+                                    const p = e.resource.participant[0];
+
+                                    // Access the individual object and extract the display text
+                                    if (p.individual && p.individual.display) {
+                                        practitioner = p.individual.display;
+                                    }
+                                }
                                 return `
                                     <div class="encounter-card">
                                         <p><strong>Encounter ID:</strong> ${displayId}</p>
                                         <p><strong>Type:</strong> ${encounterType}</p>
                                         <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
+                                        <p><strong>Clinician:</strong>${practitioner}</p>
                                     </div>
                                 `;
                             }).join('')
