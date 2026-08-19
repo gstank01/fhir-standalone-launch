@@ -220,16 +220,17 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                             .map(e => {
                                 // Extract Episode Type
                                 let episodeType = 'N/A';
-                                if (e.resource.type && e.resource.type.length > 0) {
-                                    const t = e.resource.type[0];
+                                if (e.resource.extension && e.resource.extension.length > 0) {
+                                    const ex = e.resource.extension[0];
                                     
-                                    if (t.coding && t.coding.length > 0 && t.coding[0].display) {
-                                        episodeType = t.coding[0].display;
-                                    } else if (t.text) {
-                                        episodeType = t.text;
-                                    } else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
-                                        episodeType = t.coding[0].code;
-                                    }
+                                    if (ex.extension && ex.extension.valueString) {
+                                        episodeType = ex.extension.valueString;
+                                    }   
+                                    //} else if (t.text) {
+                                        //episodeType = t.text;
+                                    //} else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
+                                        //episodeType = t.coding[0].code;
+                                    //}
                                 }
 
                                 return `
