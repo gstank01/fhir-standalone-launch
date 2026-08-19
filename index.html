@@ -11,18 +11,19 @@
     
     <div class="container">
         <!-- TRIGGER ZONE -->
-       <div class="worklist-box"> <!-- changed here 19/08-->
-            <h2>RIS Radiology Worklist</h2>
+       <div class="box"> <!-- changed here 19/08-->
+            <div class="worklist-box">
+                <h2>RIS Radiology Worklist</h2>
     
-            <div class="worklist-selector-group">
-                <label for="worklistSelect">Select Active Patient:</label>
-                <select id="worklistSelect" class="worklist-dropdown">
-                </select>
-            </div>
+                <div class="worklist-selector-group">
+                    <label for="worklistSelect">Select Active Patient:</label>
+                    <select id="worklistSelect" class="worklist-dropdown">
+                    </select>
+                </div>
 
-            <div id="patientContextCard" class="patient-card">
-            </div>
-
+                <div id="patientContextCard" class="patient-card">
+                </div>
+            </div>    
             <button id="launchBtn" class="primary-btn">GET Appointments</button>
             <button id="btn-referral-info" class="second-btn">Referral info</button> 
         </div>
