@@ -11,10 +11,15 @@
     
     <div class="container">
         <!-- TRIGGER ZONE -->
-       <div class="box"> <!-- changed here 19/08-->
-            <div class="worklist-box">
+       <div class="trigger-zone">
+            <button id="launchBtn" class="primary-btn">GET Appointments</button>
+            <button id="btn-referral-info" class="second-btn">GET Referral info</button> 
+        </div>
+
+        <div id="worklistModal" class="modal">
+            <div class="modal-content worklist-box">
                 <h2>RIS Radiology Worklist</h2>
-    
+        
                 <div class="worklist-selector-group">
                     <label for="worklistSelect">Select Active Patient:</label>
                     <select id="worklistSelect" class="worklist-dropdown">
@@ -23,9 +28,12 @@
 
                 <div id="patientContextCard" class="patient-card">
                 </div>
-            </div>    
-            <button id="launchBtn" class="primary-btn">GET Appointments</button>
-            <button id="btn-referral-info" class="second-btn">Referral info</button> 
+
+                <div class="modal-actions">
+                    <button id="cancelWorklistBtn" class="second-btn">Cancel</button>
+                    <button id="confirmAppointmentsBtn" class="primary-btn">Confirm & Fetch</button>
+                </div>
+            </div>
         </div>
 
         <!-- Log and responce data-->
