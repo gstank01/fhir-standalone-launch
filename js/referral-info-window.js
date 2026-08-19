@@ -13,6 +13,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
     let patientName = "Unknown Patient";
     let patientGender = "N/A";
     let patientDob = "N/A";
+    //let patientAddress= "N/A"
     let patientMrn = fhirId; // Default fallback
 
     if (patientBundle && patientBundle.entry && patientBundle.entry.length > 0) {
