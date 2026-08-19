@@ -7,6 +7,8 @@ document.addEventListener('DOMContentLoaded', () => { // Wait for the HTML docum
 
     
     const launchBtn = document.getElementById('launchBtn');
+    const worklistModal = document.getElementById('worklistModal');
+    const cancelWorklistBtn = document.getElementById('cancelWorklistBtn');
     const cancelModalBtn = document.getElementById('cancelModalBtn');
     const confirmLaunchBtn = document.getElementById('confirmLaunchBtn');
     const cancelCodeBtn = document.getElementById('cancelCodeBtn');
