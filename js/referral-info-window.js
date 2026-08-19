@@ -84,7 +84,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
                     gap: 10px;
-                    font-size: 14px;
+                    font-size: 16px;
                 }
                 .nav-tabs {
                     display: flex;
@@ -202,10 +202,10 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                                 }
                                 return `
                                     <div class="encounter-card">
-                                        <p><strong>Encounter ID:</strong> ${displayId}</p>
+                                        <p><strong>CNS:</strong> ${displayId}</p>
                                         <p><strong>Type:</strong> ${encounterType}</p>
                                         <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
-                                        <p><strong>Clinician:</strong>${practitioner}</p>
+                                        <p><strong>Clinician:</strong> ${practitioner}</p>
                                     </div>
                                 `;
                             }).join('')
@@ -218,7 +218,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                         ? encounterBundle.entry
                             .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
                             .map(e => {
-                                // 🚀 Extract Episode Type intelligently 
+                                // Extract Episode Type
                                 let episodeType = 'N/A';
                                 if (e.resource.type && e.resource.type.length > 0) {
                                     const t = e.resource.type[0];
