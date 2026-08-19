@@ -215,17 +215,20 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                 <h3 class="section-header">Episodes of Care</h3>
                 ${
                     encounterBundle && encounterBundle.entry && encounterBundle.entry.some(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
-                        ? encounterBundle.entry
-                            .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
-                            .map(e => {
-                                // Extract Episode Type
-                                let episodeType = 'N/A';
-                                if (e.resource.extension && e.resource.extension.length > 0) {
-                                    const ex = e.resource.extension[0];
-                                    
-                                    if (ex.extension && ex.extension.valueString) {
-                                        episodeType = ex.extension.valueString;
-                                    }   
+                    ? encounterBundle.entry
+                    .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
+                    .map(e => {
+                    // Extract Episode Type
+                    let episodeType = 'N/A';
+            
+                    if (e.resource.extension && e.resource.extension.length > 0) {
+                        const ex = e.resource.extension[0];
+                
+                        // FIX: Read valueString directly from the extension object
+                        if (ex.valueString) {
+                             episodeType = ex.valueString;
+                        }
+                        
                                     //} else if (t.text) {
                                         //episodeType = t.text;
                                     //} else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
