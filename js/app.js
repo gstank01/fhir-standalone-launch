@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => { // Wait for the HTML docum
     const confirmPatientSearchBtn = document.getElementById('confirmPatientSearchBtn');
     const confirmAppointmentFetchBtn = document.getElementById('confirmAppointmentFetchBtn');
 
-    // Initialize the referral UI module
+    //Initialise the referral UI module
     if (typeof initReferralUI === 'function') {
         initReferralUI();
     }
@@ -70,6 +70,48 @@ document.addEventListener('DOMContentLoaded', () => { // Wait for the HTML docum
                 cardEl.appendChild(pModality);
             }
         }
+
+        // --- WORKLIST MODAL TOGGLE & EVENT LISTENERS ---
+
+    // 1. Open Worklist Modal when "GET Appointments" is clicked
+    launchBtn?.addEventListener('click', () => {
+        if (worklistModal) {
+            worklistModal.classList.add('active'); // Opens the pop-up modal
+            log("Opened patient worklist modal.");
+        }
+    });
+
+    // 2. Close Worklist Modal when "Cancel" is clicked
+    cancelWorklistBtn?.addEventListener('click', () => {
+        if (worklistModal) {
+            worklistModal.classList.remove('active'); // Hides the pop-up modal
+            log("Worklist modal closed.");
+        }
+    });
+
+    // 3. Confirm selection & execute Appointment Fetch
+    const confirmAppointmentsBtn = document.getElementById('confirmAppointmentsBtn');
+    confirmAppointmentsBtn?.addEventListener('click', async () => {
+        if (worklistModal) {
+            worklistModal.classList.remove('active'); // Hide modal after confirmation
+        }
+
+        const activePatient = PatientStore.getActivePatient();
+        if (!activePatient) {
+            alert("No active patient selected.");
+            return;
+        }
+
+        log(`Confirmed worklist selection for: ${activePatient.name} (MRN: ${activePatient.identifier})`);
+
+        // Trigger your existing appointment workflow using the active patient's identifier
+        if (typeof confirmPatientSearchBtn !== 'undefined' && confirmPatientSearchBtn) {
+            // Auto-populate the search identifier input with the active patient's identifier
+            setVal('m-search-identifier', activePatient.identifier);
+            // Fire the patient search/appointment workflow
+            confirmPatientSearchBtn.click();
+        }
+    });
 
         // Change active patient on dropdown selection
         document.getElementById('worklistSelect')?.addEventListener('change', (e) => {
