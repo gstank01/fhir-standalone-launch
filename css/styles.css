@@ -29,12 +29,17 @@ h1 {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background: white;
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    background: white;
+    border-radius: 8px;
+    max-width: 750px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 25px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 .worklist-box.active{
