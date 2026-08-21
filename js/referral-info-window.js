@@ -104,7 +104,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
         encountersList.innerHTML = '<p>No encounter records found in this bundle.</p>';
     }
 
-    // 4. Process Episodes of Care (No Episode ID, robust Type extraction)
+    // 4. Process Episodes of Care (Extracts valueString from extensions)
     const episodesList = document.getElementById('ui-episodes-list');
     if (encounterBundle && encounterBundle.entry && encounterBundle.entry.some(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')) {
         episodesList.innerHTML = encounterBundle.entry
@@ -112,27 +112,29 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
             .map(e => {
                 let episodeType = 'N/A';
                 
-                // Strategy 1: Check standard FHIR type object
-                if (e.resource.type && e.resource.type.length > 0) {
-                    const t = e.resource.type[0];
-                    if (t.coding && t.coding.length > 0 && t.coding[0].display) {
-                        episodeType = t.coding[0].display;
-                    } else if (t.text) {
-                        episodeType = t.text;
-                    } else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
-                        episodeType = t.coding[0].code;
+                // Check if the resource contains extensions with valueString
+                if (e.resource.extension && e.resource.extension.length > 0) {
+                    const values = e.resource.extension
+                        .map(ex => ex.valueString)
+                        .filter(val => val); // Keeps only valid strings
+
+                    if (values.length > 0) {
+                        episodeType = values.join('<br>'); // Joins multiple valueStrings with a line break
                     }
                 } 
-                // Strategy 2: Check extensions (Common in some EHR implementations)
-                else if (e.resource.extension && e.resource.extension.length > 0) {
-                    const types = e.resource.extension.map(ex => ex.valueString).filter(val => val);
-                    if (types.length > 0) episodeType = types.join('<br>');
+                // Fallback to standard type checking if extensions aren't found
+                else if (e.resource.type && e.resource.type.length > 0) {
+                    const t = e.resource.type[0];
+                    if (t.text) {
+                        episodeType = t.text;
+                    } else if (t.coding && t.coding.length > 0) {
+                        episodeType = t.coding[0].display || t.coding[0].code || 'N/A';
+                    }
                 }
 
-                // ID display is intentionally omitted here as requested
                 return `
                     <div class="episode-card">
-                        <p><strong>Type:</strong> ${episodeType}</p>
+                        <p><strong>Type:</strong><br>${episodeType}</p>
                         <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
                     </div>
                 `;
