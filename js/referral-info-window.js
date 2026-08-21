@@ -9,6 +9,10 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
 
     // 1. Open the Modal immediately
     modal.classList.add('active');
+    
+    // Set dynamic title if the element exists
+    const titleEl = document.getElementById('dynamic-title');
+    if (titleEl) titleEl.textContent = titleText;
 
     // 2. Safely extract Patient details and locate RMH MRN
     let patientName = "Unknown Patient";
@@ -46,18 +50,19 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
         }
     }
 
-    // Populate UI Patient Header
+    // Populate UI Patient Header Banner
     document.getElementById('ui-patient-name').textContent = patientName;
     document.getElementById('ui-patient-gender').textContent = patientGender;
     document.getElementById('ui-patient-dob').textContent = patientDob;
     document.getElementById('ui-patient-mrn').textContent = patientMrn;
 
-    // 3. Process Encounters
+    // 3. Process Encounters (Restored Practitioner Logic)
     const encountersList = document.getElementById('ui-encounters-list');
     if (encounterBundle && encounterBundle.entry && encounterBundle.entry.some(e => e.resource && e.resource.resourceType === 'Encounter')) {
         encountersList.innerHTML = encounterBundle.entry
             .filter(e => e.resource && e.resource.resourceType === 'Encounter')
             .map(e => {
+                // Extract Encounter Type
                 let encounterType = 'N/A';
                 if (e.resource.type && e.resource.type.length > 0) {
                     const t = e.resource.type[0];
@@ -70,10 +75,20 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     }
                 }
 
+                // Extract Encounter ID
                 let displayId = e.resource.id || 'N/A';
                 if (e.resource.identifier && e.resource.identifier.length > 0) {
                     const extractedValues = e.resource.identifier.map(id => id.value).filter(val => val);
                     if (extractedValues.length > 0) displayId = extractedValues.join(', ');
+                }
+
+                // Restored logic to extract the Practitioner/Clinician
+                let practitioner = 'N/A';
+                if (e.resource.participant && e.resource.participant.length > 0) {
+                    const p = e.resource.participant[0];
+                    if (p.individual && p.individual.display) {
+                        practitioner = p.individual.display;
+                    }
                 }
 
                 return `
@@ -81,6 +96,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                         <p><strong>Encounter ID:</strong> ${displayId}</p>
                         <p><strong>Type:</strong> ${encounterType}</p>
                         <p><strong>Status:</strong> ${e.resource.status || 'N/A'}</p>
+                        <p><strong>Clinician:</strong> ${practitioner}</p>
                     </div>
                 `;
             }).join('');
@@ -88,13 +104,15 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
         encountersList.innerHTML = '<p>No encounter records found in this bundle.</p>';
     }
 
-    // 4. Process Episodes of Care (Episode ID excluded per previous refinement)
+    // 4. Process Episodes of Care (No Episode ID, robust Type extraction)
     const episodesList = document.getElementById('ui-episodes-list');
     if (encounterBundle && encounterBundle.entry && encounterBundle.entry.some(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')) {
         episodesList.innerHTML = encounterBundle.entry
             .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
             .map(e => {
                 let episodeType = 'N/A';
+                
+                // Strategy 1: Check standard FHIR type object
                 if (e.resource.type && e.resource.type.length > 0) {
                     const t = e.resource.type[0];
                     if (t.coding && t.coding.length > 0 && t.coding[0].display) {
@@ -104,8 +122,14 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
                     } else if (t.coding && t.coding.length > 0 && t.coding[0].code) {
                         episodeType = t.coding[0].code;
                     }
+                } 
+                // Strategy 2: Check extensions (Common in some EHR implementations)
+                else if (e.resource.extension && e.resource.extension.length > 0) {
+                    const types = e.resource.extension.map(ex => ex.valueString).filter(val => val);
+                    if (types.length > 0) episodeType = types.join('<br>');
                 }
 
+                // ID display is intentionally omitted here as requested
                 return `
                     <div class="episode-card">
                         <p><strong>Type:</strong> ${episodeType}</p>
@@ -121,7 +145,7 @@ function openReferralInspectorWindow(titleText, fhirId, encounterBundle, patient
     document.getElementById('ui-raw-json').textContent = JSON.stringify(encounterBundle, null, 2);
 }
 
-// Global UI helper functions for the Modal
+// Global UI helper functions for the Inspector Modal
 window.switchInspectorTab = function(tabId, event) {
     document.querySelectorAll('#inspectorModal .tab-pane').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('#inspectorModal .nav-item').forEach(el => el.classList.remove('active'));
