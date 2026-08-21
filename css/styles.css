@@ -1,7 +1,8 @@
 /* 1. BASE PAGE LAYOUT & CONTAINERS */
 body {
     font-family: system-ui, -apple-system, sans-serif;
-    margin: 40px;
+    width: 70%;
+    margin: 40px auto;
     background: #f4f6f9;
     color: #333;
 }
@@ -13,8 +14,6 @@ h1 {
 
 .container {
     display: block; /* changed from flex */
-    width: 70%;
-    margin: 0 auto;
 }
 
 .container > .worklist-box + .box {
