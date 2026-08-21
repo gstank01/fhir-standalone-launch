@@ -16,6 +16,10 @@ h1 {
     gap: 20px;
 }
 
+.container > .worklist-box + .box {
+    margin-top: 20px;
+}
+
 .box {
     flex: 1;
     background: white;
