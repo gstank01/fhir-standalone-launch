@@ -12,6 +12,11 @@ h1 {
     margin-bottom: 20px;
 }
 
+.dashboard-title {
+    text-align: center;
+    text-decoration: none; 
+}
+
 .container {
     display: block; /* changed from flex */
 }
