@@ -13,7 +13,8 @@ h1 {
 
 .container {
     display: block; /* changed from flex */
-    gap: 20px;
+    width: 70%;
+    margin: 0 auto;
 }
 
 .container > .worklist-box + .box {
