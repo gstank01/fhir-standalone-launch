@@ -352,6 +352,107 @@ body.inspection-window-body hr {
     color: #0076d6;
 }
 
+/* ==========================================================================
+   REFERRAL & ENCOUNTER INSPECTOR POPUP STYLES
+   ========================================================================== */
+
+body.inspector-window {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f4f7f6;
+    color: #333;
+}
+
+.inspector-header-banner {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.inspector-header-banner h2 {
+    margin: 0 0 10px 0;
+    font-size: 22px;
+}
+
+.inspector-patient-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    font-size: 16px;
+}
+
+.inspector-nav-tabs {
+    display: flex;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 20px 0;
+    border-bottom: 2px solid #ddd;
+}
+
+.inspector-nav-item {
+    padding: 10px 20px;
+    cursor: pointer;
+    font-weight: bold;
+    color: #555;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+}
+
+.inspector-nav-item.active {
+    color: #007bff;
+    border-bottom: 2px solid #007bff;
+}
+
+.inspector-tab-pane {
+    display: none;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.inspector-tab-pane.active {
+    display: block;
+}
+
+.inspector-json-preview {
+    background: #1e1e1e;
+    color: #dcdcdc;
+    padding: 15px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.inspector-encounter-card {
+    background: #f8f9fa;
+    border-left: 4px solid #007bff;
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.inspector-episode-card {
+    background: #f8f9fa;
+    border-left: 4px solid #28a745;
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.inspector-section-header {
+    margin-top: 30px;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 5px;
+}
+
 .patient-card p {
     margin: 2px 0;
     color: #555;
