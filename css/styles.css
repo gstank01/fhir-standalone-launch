@@ -19,6 +19,9 @@ h1 {
 
 .container {
     display: block; /* changed from flex */
+    text-align: center;
+    text-decoration: none; 
+    
 }
 
 .container > .worklist-box + .box {
