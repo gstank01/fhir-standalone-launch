@@ -212,43 +212,48 @@
 </div>
 
 <!-- STEP 6: IN-PAGE REFERRAL INSPECTOR MODAL -->
-    <div id="inspectorModal" class="modal-overlay">
-        <div class="modal" style="max-width: 900px; width: 90%; max-height: 90vh; overflow-y: auto;">
-            
-            <div class="header-banner">
-                <h2 id="dynamic-title">Referral info</h2>
-                <div class="patient-info-grid">
-                    <div><strong>Patient Name:</strong> <span id="ui-patient-name">Loading...</span></div>
-                    <div><strong>Gender:</strong> <span id="ui-patient-gender">Loading...</span></div>
-                    <div><strong>DOB:</strong> <span id="ui-patient-dob">Loading...</span></div>
-                    <div><strong>RMH MRN:</strong> <span id="ui-patient-mrn">Loading...</span></div>
-                </div>
+<div id="inspectorModal" class="modal-overlay">
+    <div class="modal" style="max-width: 900px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 0;">
+        
+        <!-- Banner and Patient Details -->
+        <div class="header-banner">
+            <h2>📋 Referral & Encounter Inspector</h2>
+            <div class="patient-info-grid">
+                <div><strong>Patient Name:</strong> <span id="ui-patient-name">Loading...</span></div>
+                <div><strong>Gender:</strong> <span id="ui-patient-gender">Loading...</span></div>
+                <div><strong>DOB:</strong> <span id="ui-patient-dob">Loading...</span></div>
+                <div><strong>RMH MRN:</strong> <span id="ui-patient-mrn">Loading...</span></div>
             </div>
+        </div>
 
+        <div style="padding: 20px;">
+            <!-- Navigation Tabs -->
             <ul class="nav-tabs">
                 <li class="nav-item active" onclick="switchInspectorTab('encounters-tab', event)">Encounters & Episodes</li>
                 <li class="nav-item" onclick="switchInspectorTab('raw-json-tab', event)">Raw JSON Bundle</li>
             </ul>
 
+            <!-- Tab 1: Encounters and Episodes -->
             <div id="encounters-tab" class="tab-pane active">
-                <h3 class="section-header">Associated Encounter</h3>
+                <h3 class="section-header">Associated Clinical Visits (Encounters)</h3>
                 <div id="ui-encounters-list"></div>
 
                 <h3 class="section-header">Episodes of Care</h3>
                 <div id="ui-episodes-list"></div>
             </div>
 
+            <!-- Tab 2: Raw JSON -->
             <div id="raw-json-tab" class="tab-pane">
                 <h3>Full FHIR Bundle Payload</h3>
-                <pre id="ui-raw-json"></pre>
+                <pre id="ui-raw-json" class="json-inspection-preview"></pre>
             </div>
 
             <div class="modal-actions" style="margin-top: 20px;">
                 <button class="secondary" onclick="closeInspectorModal()">Close Inspector</button>
             </div>
-            
         </div>
     </div>
+</div>
  
     <!-- SCRIPT INCLUDES -->
     <script src="js/config.js"></script>
