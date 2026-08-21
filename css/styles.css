@@ -12,7 +12,7 @@ h1 {
 }
 
 .container {
-    display: flex;
+    display: block; /* changed from flex */
     gap: 20px;
 }
 
