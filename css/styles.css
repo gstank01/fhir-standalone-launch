@@ -25,9 +25,14 @@ h1 {
     margin-top: 20px;
 }
 
+/* Center all inline text, headings, and buttons inside trigger-zone */
 .trigger-zone {
     text-align: center;
-    text-decoration: none;
+}
+
+/*  Center only the h3 heading inside the trigger zone */
+.trigger-zone h3 {
+    text-align: center;
 }
 
 .box {
