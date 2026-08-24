@@ -71,66 +71,68 @@ document.addEventListener('DOMContentLoaded', () => { // Wait for HTML document 
 
         // --- WORKLIST MODAL TOGGLE & EVENT LISTENERS ---
 
-        // 1. Open ONLY Worklist Modal when "GET Appointments" is clicked
-        launchBtn?.addEventListener('click', () => {
-            if (worklistModal) {
-                worklistModal.classList.add('active'); // Opens the pop-up modal
-                log("Opened patient worklist modal.");
+        // 1. Open ONLY the Worklist Modal when "GET Appointments" is clicked
+    launchBtn?.addEventListener('click', () => {
+        if (worklistModal) {
+            worklistModal.classList.add('active');
+            log("Opened patient worklist modal.");
+        }
+    });
+
+    // 2. Close Worklist Modal when "Cancel" is clicked
+    cancelWorklistBtn?.addEventListener('click', () => {
+        if (worklistModal) {
+            worklistModal.classList.remove('active');
+            log("Worklist modal closed.");
+        }
+    });
+
+    // 3. Confirm selection -> Hide Worklist & Trigger Pre-Flight Auth sequence
+    const confirmAppointmentsBtn = document.getElementById('confirmAppointmentsBtn');
+    confirmAppointmentsBtn?.addEventListener('click', async () => {
+        // Hide modal after confirmation
+        if (worklistModal) {
+            worklistModal.classList.remove('active'); 
+        }
+
+        const activePatient = PatientStore.getActivePatient();
+        if (!activePatient) {
+            alert("No active patient selected.");
+            return;
+        }
+
+        log(`Confirmed worklist selection for: ${activePatient.name} (MRN: ${activePatient.identifier})`);
+
+        try {
+            // Save context to session for the FHIR launch
+            AuthStore.setPatientContext(activePatient);
+            log(`Bound patient context: ${activePatient.name} (MRN: ${activePatient.identifier})`);
+
+            log("Generating authorization parameters...");
+            
+            // Generate State & set modal values
+            const state = generateRandomString(32); 
+            sessionStorage.setItem('fhir_state', state);
+
+            setVal('m-endpoint', CONFIG.AUTH_URL);
+            setVal('m-client-id', CONFIG.CLIENT_ID);
+            setVal('m-redirect-uri', CONFIG.REDIRECT_URI);
+            setVal('m-aud', CONFIG.FHIR_BASE_URL);
+            setVal('m-state', state);
+            setVal('m-scope', CONFIG.SCOPES);
+
+            updatePreviewUrl();
+
+            // Open the Pre-flight Modal
+            const preflightModal = document.getElementById('preflightModal');
+            if (preflightModal) {
+                preflightModal.classList.add('active');
+                log("Pre-flight screen displayed. Edit fields as needed.");
             }
-        });
-
-        // 2. Close Worklist Modal when "Cancel" is clicked
-        cancelWorklistBtn?.addEventListener('click', () => {
-            if (worklistModal) {
-                worklistModal.classList.remove('active'); // Hides the pop-up modal
-                log("Worklist modal closed.");
-            }
-        });
-
-        // 3. Confirm selection -> Hide Worklist Modal & Launch Step 1 (Pre-flight Modal)
-        const confirmAppointmentsBtn = document.getElementById('confirmAppointmentsBtn');
-        confirmAppointmentsBtn?.addEventListener('click', async () => {
-            if (worklistModal) {
-                worklistModal.classList.remove('active'); // Hide worklist modal
-            }
-
-            const activePatient = PatientStore.getActivePatient();
-            if (!activePatient) {
-                alert("No active patient selected.");
-                return;
-            }
-
-            log(`Confirmed worklist selection for: ${activePatient.name} (MRN: ${activePatient.identifier})`);
-
-            // --- TRIGGER STEP 1 (Pre-Flight Modal) ---
-            try {
-                AuthStore.setPatientContext(activePatient);
-                log(`Bound patient context: ${activePatient.name} (MRN: ${activePatient.identifier})`);
-
-                log("Generating authorization parameters...");
-                const state = generateRandomString(32);
-                AuthStore.setState(state);
-
-                // Set inputs for Auth Code Request
-                setVal('m-endpoint', CONFIG.AUTH_URL);
-                setVal('m-client-id', CONFIG.CLIENT_ID);
-                setVal('m-redirect-uri', CONFIG.REDIRECT_URI);
-                setVal('m-aud', CONFIG.FHIR_BASE_URL);
-                setVal('m-state', state);
-                setVal('m-scope', CONFIG.SCOPES);
-
-                updatePreviewUrl();
-
-                // Display Step 1 Modal
-                const preflightModal = document.getElementById('preflightModal');
-                if (preflightModal) {
-                    preflightModal.classList.add('active');
-                    log("Pre-flight screen displayed. Edit fields as needed.");
-                }
-            } catch (err) {
-                log(`RUNTIME ERROR: ${err.message}`);
-            }
-        });
+        } catch (err) {
+            log(`RUNTIME ERROR: ${err.message}`);
+        }
+    });
 
         // Change active patient on dropdown selection
         document.getElementById('worklistSelect')?.addEventListener('change', (e) => {
