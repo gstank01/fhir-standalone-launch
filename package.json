@@ -4,6 +4,8 @@
   "description": "JWT signing script",
   "main": "js/backend-app.js",
   "dependencies": {
-    "jsrsasign": "^11.1.0"
+    "jsrsasign": "^11.1.0",
+    "cql-execution": "^3.0.0",
+    "cql-exec-fhir": "^3.0.0"
   }
 }
