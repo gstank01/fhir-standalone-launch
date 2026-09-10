@@ -137,6 +137,10 @@ document.addEventListener('DOMContentLoaded', () => {
             cqlResultOutput.textContent = `Evaluating CQL logic via Vercel for Patient ID ${fhirId}...`;
             log("Sending bundles to Vercel CQL Gatekeeper engine (/api/evaluateCql)...");
 
+            // Print the payload bundles to the Live Process Logs before sending to CQL Logic
+            log(`Payload - Patient Bundle: <pre style="background:#1e1e1e; color:#4af626; padding:5px; margin:5px 0; max-height:150px; overflow-y:auto;">${escapeHtml(JSON.stringify(patientBundle, null, 2))}</pre>`);
+            log(`Payload - Encounter Bundle: <pre style="background:#1e1e1e; color:#4af626; padding:5px; margin:5px 0; max-height:150px; overflow-y:auto;">${escapeHtml(JSON.stringify(encounterBundle, null, 2))}</pre>`);
+
             // Post to Vercel API backend for CQL evaluation
             const evalResponse = await fetch('/api/evaluateCql', {
                 method: 'POST',
@@ -161,5 +165,10 @@ document.addEventListener('DOMContentLoaded', () => {
             log(`<span style="color: red;">ERROR: CQL Workflow Failed: ${error.message}</span>`);
             cqlResultOutput.textContent = `Execution Error: ${error.message}`;
         }
+    }
+
+    // Helper to safely format JSON strings inside HTML logs
+    function escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 });
