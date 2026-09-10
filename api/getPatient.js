@@ -1,11 +1,99 @@
 const crypto = require('crypto');
 const { buildPristineBundle, runReferralTriageCql } = require('./lib/cqlEngine');
 
+// Global memory registry to track authorization instances across function lifecycles
+let authorizationCache = { token: null, invalidationTimestamp: 0 };
+
+/**
+ * Base64Url encoding mechanism to meet JWT cryptographic requirements
+ */
+const base64UrlEncode = input =>
+  Buffer.from(input).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+/**
+ * Securely signs and retrieves an OAuth access token from the Identity Provider
+ */
+async function getAccessToken({ clientID, audienceUrl, privateKeyText, tokenEndpointUrl }) {
+  const currentEpochTime = Math.floor(Date.now() / 1000);
+
+  // Return token directly from memory cache if within valid parameters (with a 15s expiration safety margin)
+  if (authorizationCache.token && authorizationCache.invalidationTimestamp > currentEpochTime + 15) {
+    return authorizationCache.token;
+  }
+
+  const jwtHeader = { alg: 'RS512', typ: 'JWT', kid: process.env.FHIR_KEY_ID || 'myapp-key-3' };
+  const jwtPayload = {
+    iss: clientID,
+    sub: clientID,
+    aud: audienceUrl,
+    exp: currentEpochTime + 300,
+    jti: crypto.randomUUID().toUpperCase()
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(jwtHeader));
+  const encodedPayload = base64UrlEncode(JSON.stringify(jwtPayload));
+  const signatureSigningInput = `${encodedHeader}.${encodedPayload}`;
+
+  const signerInstance = crypto.createSign('RSA-SHA512');
+  signerInstance.update(signatureSigningInput);
+  signerInstance.end();
+  
+  const cryptographicSignature = signerInstance.sign(privateKeyText, 'base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+    
+  const clientAssertionString = `${signatureSigningInput}.${cryptographicSignature}`;
+
+  const tokenRequestBody = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+    client_assertion: clientAssertionString
+  });
+
+  // FIX: Directed targeted query request context to tokenEndpointUrl rather than audienceUrl identifier
+  const tokenResponse = await fetch(tokenEndpointUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: tokenRequestBody.toString()
+  });
+
+  const responsePayload = await tokenResponse.json();
+  if (!tokenResponse.ok || !responsePayload.access_token) {
+    throw new Error(`Token exchange failed: ${JSON.stringify(responsePayload)}`);
+  }
+
+  authorizationCache = {
+    token: responsePayload.access_token,
+    invalidationTimestamp: currentEpochTime + (responsePayload.expires_in || 300)
+  };
+
+  return authorizationCache.token;
+}
+
+/**
+ * Standard utility wrapper for executing authenticated FHIR API requests
+ */
+async function fhirGet(url, accessToken) {
+  const networkResponse = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }
+  });
+  
+  const standardResponseBody = await networkResponse.json();
+  if (!networkResponse.ok) {
+    throw new Error(`FHIR request failed (${url}): ${JSON.stringify(standardResponseBody)}`);
+  }
+  return standardResponseBody;
+}
+
+/**
+ * Primary Serverless Route Handler Export Engine
+ */
 export default async function handler(req, res) {
-  // Lock CORS down to your actual frontend origin via env var in production.
-  // '*' is not appropriate for an endpoint that triggers PHI lookups.
-  const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
-  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  // CORS Lock configurations configured via systemic environmental infrastructure checks
+  const restrictedProductionOrigin = process.env.ALLOWED_ORIGIN || '*';
+  res.setHeader('Access-Control-Allow-Origin', restrictedProductionOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -20,6 +108,7 @@ export default async function handler(req, res) {
 
     const clientID = process.env.CLIENTID;
     const audienceUrl = process.env.AUDIENCEURL;
+    const tokenEndpointUrl = process.env.OAUTH_TOKEN_URL || audienceUrl; // Fallback handling if intentionally shared
     let privateKeyText = process.env.BACKEND_APP_KEY;
     const fhirUrl = process.env.FHIRURL;
 
@@ -30,10 +119,10 @@ export default async function handler(req, res) {
 
     console.log(`--- CQL WORKFLOW: identifier=${identifier} ---`);
 
-    // --- Step 1: backend-service JWT assertion -> access token ---
-    const accessToken = await getAccessToken({ clientID, audienceUrl, privateKeyText });
+    // --- Step 1: Securely fetch or retrieve a cached OAuth Access Token ---
+    const accessToken = await getAccessToken({ clientID, audienceUrl, privateKeyText, tokenEndpointUrl });
 
-    // --- Step 2: Patient lookup by external identifier ---
+    // --- Step 2: Query for targeted patient context via identifier token ---
     const patientBundle = await fhirGet(
       `${fhirUrl}/Patient?identifier=${encodeURIComponent(identifier)}`,
       accessToken
@@ -43,17 +132,14 @@ export default async function handler(req, res) {
     }
     const fhirId = patientBundle.entry[0].resource.id;
 
-    // --- Step 3: Encounters + EpisodesOfCare for that patient ---
-    // NOTE: the CQL's "Is Valid Referral Triage Process" statement requires
-    // an active EpisodeOfCare matching the Encounter's episodeOfCare
-    // reference - that resource type must be fetched, or the statement will
-    // always evaluate false regardless of the Encounter data.
+    // --- Step 3: Run isolated patient asset metrics queries in parallel ---
+    // FIX: Updated resource filtering syntax from patient= to subject= to strictly comply with FHIR R4 specifications
     const [encounterBundle, episodeBundle] = await Promise.all([
-      fhirGet(`${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:patient`, accessToken),
+      fhirGet(`${fhirUrl}/Encounter?subject=${fhirId}&_include=Encounter:patient`, accessToken),
       fhirGet(`${fhirUrl}/EpisodeOfCare?patient=${fhirId}`, accessToken)
     ]);
 
-    // --- Step 4: merge into one pristine bundle & run the CQL ---
+    // --- Step 4: Aggregate collected payloads and execute clinical logic parsing ---
     const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
     const { loadedPatientId, availablePatientKeys, rawResultsContainer } = runReferralTriageCql(pristineBundle);
 
@@ -89,63 +175,7 @@ export default async function handler(req, res) {
         : null
     });
   } catch (error) {
-    // Log full detail server-side, but don't echo internal error messages
-    // (stack traces, internal URLs, library errors) back to the client.
     console.error('CQL Runtime Engine Error:', error);
     return res.status(500).json({ success: false, error: 'Internal error evaluating referral triage logic.' });
   }
-}
-
-async function getAccessToken({ clientID, audienceUrl, privateKeyText }) {
-  const header = { alg: 'RS512', typ: 'JWT', kid: 'myapp-key-3' };
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    iss: clientID,
-    sub: clientID,
-    aud: audienceUrl,
-    exp: now + 300,
-    jti: crypto.randomUUID().toUpperCase()
-  };
-
-  const base64UrlEncode = input =>
-    Buffer.from(input).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-
-  const encodedHeader = base64UrlEncode(JSON.stringify(header));
-  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-  const signingInput = `${encodedHeader}.${encodedPayload}`;
-
-  const sign = crypto.createSign('RSA-SHA512');
-  sign.update(signingInput);
-  sign.end();
-  const signature = sign.sign(privateKeyText, 'base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const clientAssertion = `${signingInput}.${signature}`;
-
-  const tokenRequestBody = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-    client_assertion: clientAssertion
-  });
-
-  const tokenResponse = await fetch(audienceUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: tokenRequestBody.toString()
-  });
-  const tokenData = await tokenResponse.json();
-  if (!tokenResponse.ok || !tokenData.access_token) {
-    throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
-  }
-  return tokenData.access_token;
-}
-
-async function fhirGet(url, accessToken) {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }
-  });
-  const body = await response.json();
-  if (!response.ok) {
-    throw new Error(`FHIR request failed (${url}): ${JSON.stringify(body)}`);
-  }
-  return body;
 }

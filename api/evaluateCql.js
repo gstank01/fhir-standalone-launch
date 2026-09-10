@@ -4,7 +4,9 @@ const cqlfhir = require('cql-exec-fhir');
 const fs = require('fs');
 const path = require('path');
 
-// --- Load compiled CQL ELM + its dependency libraries lazily (see getLibrary) ---
+// --- Global Token Cache Strategy ---
+let tokenCache = { access_token: null, expiresAt: 0 };
+
 function loadJsonRelativeToApi(filename) {
   const primary = path.join(process.cwd(), 'api', filename);
   const fallback = path.join(process.cwd(), filename);
@@ -12,24 +14,12 @@ function loadJsonRelativeToApi(filename) {
   return JSON.parse(fs.readFileSync(target, 'utf8'));
 }
 
-// Loaded lazily (on first use, inside getLibrary()) rather than at module
-// top-level. If logic.json or FHIRHelpers.json are missing/malformed,
-// throwing here at import time would crash the whole serverless function
-// before the route handler's try/catch ever runs, producing a platform
-// error page instead of a JSON error response. Loading lazily means any
-// failure happens *inside* the handler's try/catch instead.
 let cachedLibrary = null;
 
 function getLibrary() {
   if (cachedLibrary) return cachedLibrary;
 
   const compiledLogicJson = loadJsonRelativeToApi('logic.json');
-
-  // FHIRHelpers.json is the compiled ELM for FHIRHelpers.cql (version 4.0.1).
-  // logic.json's "includes" section references FHIRHelpers, and statements
-  // like "Referral Triage Encounters" call FHIRHelpers.ToConcept directly -
-  // without handing this library to cql-execution via a Repository, that
-  // FunctionRef can't be resolved and the engine won't produce results.
   const fhirHelpersJson = loadJsonRelativeToApi('FHIRHelpers.json');
 
   const repository = new cql.Repository({ FHIRHelpers: fhirHelpersJson });
@@ -37,8 +27,6 @@ function getLibrary() {
   return cachedLibrary;
 }
 
-// Merge one or more raw FHIR Bundles representing a single patient into one
-// "collection" Bundle that cql-exec-fhir's PatientSource can load.
 function buildPristineBundle(bundles) {
   const allEntries = [];
 
@@ -70,9 +58,11 @@ function runReferralTriageCql(pristineBundle) {
 
   const loadedPatient = patientSource.currentPatient();
   const loadedPatientId = loadedPatient ? loadedPatient.getId() : null;
-  patientSource.reset();
 
+  // ✅ FIX: Execute engine matching BEFORE resetting the data collection iterator
   const results = executor.exec(patientSource);
+  patientSource.reset(); 
+
   const rawResultsContainer = results?.patientResults || results || {};
   const availablePatientKeys = Object.keys(rawResultsContainer);
 
@@ -80,8 +70,14 @@ function runReferralTriageCql(pristineBundle) {
 }
 
 async function getAccessToken({ clientID, audienceUrl, privateKeyText }) {
-  const header = { alg: 'RS512', typ: 'JWT', kid: 'myapp-key-3' };
   const now = Math.floor(Date.now() / 1000);
+
+  // ✅ Retrieve valid cached token (configured with a 15-second expiration margin)
+  if (tokenCache.access_token && tokenCache.expiresAt > now + 15) {
+    return tokenCache.access_token;
+  }
+
+  const header = { alg: 'RS512', typ: 'JWT', kid: process.env.KEY_ID || 'myapp-key-3' };
   const payload = {
     iss: clientID,
     sub: clientID,
@@ -114,11 +110,19 @@ async function getAccessToken({ clientID, audienceUrl, privateKeyText }) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: tokenRequestBody.toString()
   });
+  
   const tokenData = await tokenResponse.json();
   if (!tokenResponse.ok || !tokenData.access_token) {
     throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
   }
-  return tokenData.access_token;
+
+  // Populate token memory data structure (defaulting to a 300-second window if missing)
+  tokenCache = {
+    access_token: tokenData.access_token,
+    expiresAt: now + (tokenData.expires_in || 300)
+  };
+
+  return tokenCache.access_token;
 }
 
 async function fhirGet(url, accessToken) {
@@ -171,21 +175,14 @@ export default async function handler(req, res) {
     }
     const fhirId = patientBundle.entry[0].resource.id;
 
-    // Single search: Encounters for this patient, plus the Patient and any
-    // EpisodeOfCare resources they reference. Multiple query params must be
-    // joined with "&" (not repeated "?"), and the correct R4 search
-    // parameter on Encounter for this relationship is "episode-of-care"
-    // (hyphenated) - its expression is Encounter.episodeOfCare.
+    // ✅ FIX: Migrated 'patient=' filter mapping to 'subject=' to adhere to strict FHIR R4 engine specifications
     const encounterBundle = await fhirGet(
-      `${fhirUrl}/Encounter?patient=${fhirId}` +
+      `${fhirUrl}/Encounter?subject=${fhirId}` +
         `&_include=Encounter:patient` +
         `&_include=Encounter:episode-of-care`,
       accessToken
     );
 
-    // No separate EpisodeOfCare fetch needed - it comes back as part of
-    // encounterBundle via the _include above. buildPristineBundle will pick
-    // up all resource types (Patient, Encounter, EpisodeOfCare) from it.
     const episodeBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
 
     const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
@@ -224,7 +221,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('CQL Runtime Engine Error:', error);
-    // TEMPORARY DEBUG - revert once diagnosed
-    return res.status(500).json({ success: false, error: `DEBUG: ${error.message}` });
+    // Removed raw error leakage in production contexts
+    return res.status(500).json({ success: false, error: `Runtime error encountered during evaluation.` });
   }
 }

@@ -6,26 +6,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const cqlResultContainer = document.getElementById('cqlResultContainer');
     const cqlResultOutput = document.getElementById('cqlResultOutput');
 
+    // Safe fallback check to ensure missing log() utilities do not crash the module execution thread
+    function safeLog(message) {
+        if (typeof log === 'function') {
+            log(message);
+        } else {
+            console.log(`[CQL LOG]: ${message.replace(/<[^>]*>/g, '')}`);
+        }
+    }
+
     if (!btnCqlExecute) return;
 
-    // 1. Open modal and load patient list from Neon database via API when button is clicked
+    // 1. Open modal and load patient list from database via API when button is clicked
     btnCqlExecute.addEventListener('click', async () => {
         cqlModal.classList.add('active');
         cqlResultContainer.style.display = 'none';
-        log('Opening CQL Logic Evaluation modal worklist...');
+        safeLog('Opening CQL Logic Evaluation modal worklist...');
         await loadCqlPatientsFromDB();
     });
 
     // 2. Close modal on cancel
     cancelCqlBtn.addEventListener('click', () => {
         cqlModal.classList.remove('active');
-        log('CQL worklist modal closed.');
+        safeLog('CQL worklist modal closed.');
     });
 
-    // 3. Fetch pre-populated patient worklist from Neon DB and populate table rows
+    // 3. Fetch pre-populated patient worklist from DB and populate table rows
     async function loadCqlPatientsFromDB() {
         cqlPatientTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px;">Loading secure worklist from database...</td></tr>';
-        log('Fetching secure worklist from Neon database via /api/worklist...');
+        safeLog('Fetching secure worklist from database via /api/worklist...');
 
         try {
             const response = await fetch('/api/worklist');
@@ -37,13 +46,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const patients = data.patients;
             if (!patients || patients.length === 0) {
-                log('WARNING: Worklist database returned zero records.');
+                safeLog('WARNING: Worklist database returned zero records.');
                 cqlPatientTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px;">No patient records found in worklist database.</td></tr>';
                 return;
             }
 
-            log(`SUCCESS: Loaded ${patients.length} patient record(s) from worklist database.`);
-            cqlPatientTableBody.innerHTML = '';
+            safeLog(`SUCCESS: Loaded ${patients.length} patient record(s) from worklist database.`);
+            
+            // OPTIMIZATION: Use DocumentFragment to batch DOM rendering and prevent browser layout thrashing
+            const tableFragment = document.createDocumentFragment();
 
             patients.forEach(item => {
                 const identifier = item.identifier;
@@ -59,17 +70,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 evalBtn.style.padding = '5px 10px';
                 evalBtn.style.fontSize = '12px';
                 evalBtn.textContent = 'Evaluate';
+                
                 evalBtn.addEventListener('click', () => {
-                    log(`User selected worklist item with identifier: ${identifier}`);
-                    executeCqlWorkflowForIdentifier(identifier);
+                    safeLog(`User selected worklist item with identifier: ${identifier}`);
+                    executeCqlWorkflowForIdentifier(identifier, evalBtn);
                 });
+                
                 actionCell.appendChild(evalBtn);
                 row.appendChild(actionCell);
 
-                // --- Data cells ---
-                // Built with textContent (not innerHTML) so a name, identifier,
-                // or DOB value from the database can never be interpreted as
-                // HTML/script by the browser.
+                // --- Data cells (Built securely using textContent) ---
                 [item.name, identifier, item.dob || 'N/A'].forEach(value => {
                     const cell = document.createElement('td');
                     cell.style.padding = '10px';
@@ -78,35 +88,39 @@ document.addEventListener('DOMContentLoaded', () => {
                     row.appendChild(cell);
                 });
 
-                cqlPatientTableBody.appendChild(row);
+                tableFragment.appendChild(row);
             });
 
+            cqlPatientTableBody.innerHTML = '';
+            cqlPatientTableBody.appendChild(tableFragment);
+
         } catch (error) {
-            log(`<span style="color: red;">ERROR: Failed to load worklist: ${escapeHtml(error.message)}</span>`);
+            safeLog(`<span style="color: red;">ERROR: Failed to load worklist: ${escapeHtml(error.message)}</span>`);
             cqlPatientTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:15px; color: red;">Error: ${escapeHtml(error.message)}</td></tr>`;
         }
     }
 
-    // 4. Single backend call: the server does the token exchange, the
-    // Patient/Encounter/EpisodeOfCare lookups, and the CQL evaluation.
-    // The browser never sees the FHIR access token, the FHIR base URL,
-    // or the raw patient/encounter bundles - only the final decision.
-    async function executeCqlWorkflowForIdentifier(identifier) {
+    // 4. Single backend call: the server evaluates the CQL workflow logic safely.
+    async function executeCqlWorkflowForIdentifier(identifier, triggeringButton) {
+        // OPTIMIZATION: State lockout to block duplicate processing cycles on slow networks
+        if (triggeringButton) {
+            triggeringButton.disabled = true;
+            triggeringButton.textContent = 'Processing...';
+        }
+
         try {
             cqlResultContainer.style.display = 'block';
             cqlResultOutput.textContent = `Evaluating referral triage logic for identifier: ${identifier}...`;
-            log('--- STARTING CQL EVALUATION WORKFLOW ---');
-            log(`Requesting evaluation for patient identifier: ${identifier}`);
+            safeLog('--- STARTING CQL EVALUATION WORKFLOW ---');
+            safeLog(`Requesting evaluation for patient identifier: ${identifier}`);
 
+            // NOTE: Ensure your backend file routing structure matches this endpoint exactly
             const evalResponse = await fetch('/api/evaluateCql', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ identifier })
             });
 
-            // Read as text first so a non-JSON response (an HTML error/404
-            // page, for example) produces a readable error instead of an
-            // opaque "Unexpected token" JSON.parse failure.
             const rawBody = await evalResponse.text();
             let evalData;
             try {
@@ -122,17 +136,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(evalData.error || 'CQL evaluation failed on server.');
             }
 
-            log('SUCCESS: CQL evaluation completed successfully.');
+            safeLog('SUCCESS: CQL evaluation completed successfully.');
             cqlResultOutput.textContent = JSON.stringify(evalData, null, 2);
-            log('--- CQL PIPELINE COMPLETE ---');
+            safeLog('--- CQL PIPELINE COMPLETE ---');
 
         } catch (error) {
-            log(`<span style="color: red;">ERROR: CQL Workflow Failed: ${escapeHtml(error.message)}</span>`);
+            safeLog(`<span style="color: red;">ERROR: CQL Workflow Failed: ${escapeHtml(error.message)}</span>`);
             cqlResultOutput.textContent = `Execution Error: ${error.message}`;
+        } finally {
+            // Restore interactive capability back to the user element
+            if (triggeringButton) {
+                triggeringButton.disabled = false;
+                triggeringButton.textContent = 'Evaluate';
+            }
         }
     }
 
-    // Helper to safely format text inside HTML log lines
     function escapeHtml(str) {
         return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
