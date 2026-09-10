@@ -51,24 +51,41 @@ function initReferralUI() {
 }
 
 async function sendToCqlGatekeeper(extractedBundle, targetPatientId) {
-  const response = await fetch('https://vercel.app', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      patientId: targetPatientId,
-      fhirBundle: extractedBundle // The Encounter and EpisodeOfCare data bundle
-    })
-  });
+  try {
+    // 1. Corrected URL targeting your dedicated serverless endpoint
+    const response = await fetch('/api/evaluateCql', { 
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        patientId: targetPatientId,
+        fhirBundle: extractedBundle // The Encounter and EpisodeOfCare data bundle
+      })
+    });
 
-  const data = await response.json();
-  
-  if (data.success && data.actionRequired) {
-    // Push data.routingData directly to your database queue for human triage
-    console.log(`Routing patient ${targetPatientId} to Action Queue.`);
+    // 2. Validate HTTP Status range (200-299) before processing JSON
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Server returned HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    // 3. Process routing if gatekeeper logic evaluates true
+    if (data.success && data.actionRequired) {
+      // Push data.routingData directly to your database queue for human triage
+      console.log(`Routing patient ${targetPatientId} to Action Queue.`, data.routingData);
+    } else {
+      console.log(`Patient ${targetPatientId} evaluated successfully. No triage action required.`);
+    }
+
+  } catch (error) {
+    console.error("Failed to send data to CQL Gatekeeper:", error);
+    // Optional UI fallback: alert(`Gatekeeper error: ${error.message}`);
   }
 }
+
 
 
 // The master function for the workflow
@@ -141,6 +158,15 @@ async function executeReferralWorkflow(identifier) {
             }
 
             log("SUCCESS: Encounter Bundle Received.");
+            
+            log("Sending bundle to CQL Gatekeeper for evaluation...");
+            await sendToCqlGatekeeper(encounterBundle, fhirId);
+
+            log("Opening Encounter Record in JSON inspector window...");
+
+            // Pass the Encounter Bundle to your pop-up window
+            openReferralInspectorWindow(`Encounters & Patient Banner for MRN: ${identifier}`, fhirId, encounterBundle, patientBundle);
+
             log("Opening Encounter Record in JSON inspector window...");
 
             // Pass the Encounter Bundle to your pop-up window
