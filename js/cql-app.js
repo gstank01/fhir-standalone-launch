@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             log('--- STARTING CQL EVALUATION WORKFLOW ---');
             log(`Requesting evaluation for patient identifier: ${identifier}`);
 
-            const evalResponse = await fetch('/api/evaluatePatient', {
+            const evalResponse = await fetch('/api/evaluateCql', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ identifier })
