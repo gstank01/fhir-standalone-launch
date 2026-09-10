@@ -31,61 +31,52 @@ export default async function handler(req, res) {
     console.log("--- CQL GATEKEEPER GUARDRAIL DEBUG ---");
     console.log("1. Target Patient ID received from frontend:", patientId);
 
-    // Guardrail A: Validate incoming bundles structure
-    const patientEntries = patientBundle?.entry || [];
-    const encounterEntries = encounterBundle?.entry || [];
-
-    console.log(`2. Patient Bundle Entries Count: ${patientEntries.length}`);
-    patientEntries.forEach((entry, index) => {
-        console.log(`   - Patient [${index}] resourceType: ${entry.resource?.resourceType}, id: ${entry.resource?.id}`);
-    });
-
-    console.log(`3. Encounter Bundle Entries Count: ${encounterEntries.length}`);
-    encounterEntries.forEach((entry, index) => {
-        const subRef = entry.resource?.subject?.reference || 'No subject reference';
-        console.log(`   - Encounter [${index}] resourceType: ${entry.resource?.resourceType}, id: ${entry.resource?.id}, subject: ${subRef}`);
-    });
-
-    // 1. Manually extract raw resources to strip away Epic's searchset wrappers
-    const allResources = [];
+    // 1. Safely extract all original entries while PRESERVING fullUrl and metadata
+    const allEntries = [];
     
     if (patientBundle.entry) {
-        patientBundle.entry.forEach(e => { if (e.resource) allResources.push(e.resource); });
+        allEntries.push(...patientBundle.entry);
     }
     
     if (encounterBundle.entry) {
-        encounterBundle.entry.forEach(e => { if (e.resource) allResources.push(e.resource); });
+        allEntries.push(...encounterBundle.entry);
     }
 
+    console.log(`2. Total Bundle Entries Merged: ${allEntries.length}`);
+
     // 2. Hard-validate the Patient resource exists
-    const patientResources = allResources.filter(r => r.resourceType === 'Patient');
+    const patientResources = allEntries
+        .map(e => e.resource)
+        .filter(r => r && r.resourceType === 'Patient');
     
     if (patientResources.length === 0) {
-        const foundTypes = [...new Set(allResources.map(r => r.resourceType))].join(', ');
+        const foundTypes = [...new Set(allEntries.map(e => e.resource?.resourceType))].join(', ');
         return res.status(422).json({ 
             success: false, 
-            error: `Backend stripped wrappers but found NO 'Patient' resource. Resources found: [${foundTypes}]` 
+            error: `Backend merged entries but found NO 'Patient' resource. Resources found: [${foundTypes}]` 
         });
     }
 
-    // 3. Construct a pristine collection bundle guaranteed to parse in cql-exec-fhir
+    // 3. Construct a pristine collection bundle, keeping the original entry objects intact
     const pristineBundle = {
         resourceType: 'Bundle',
         type: 'collection',
-        entry: allResources.map(r => ({ resource: r }))
+        entry: allEntries
     };
 
-    // 4. Initialize engine
+    // 4. Initialize engine using standard FHIR R4 source
     const library = new cql.Library(compiledLogicJson);
     const executor = new cql.Executor(library);
-    const patientSource = cqlfhir.PatientSource.FHIRv401();
+    
+    // Use FHIRv400() as it is the standard export for R4 in cql-exec-fhir
+    const patientSource = cqlfhir.PatientSource.FHIRv400();
 
     // 5. Load the pristine bundle natively
     patientSource.loadBundles([pristineBundle]);
 
     // Guardrail B: Verify Patient Source registration
     const loadedPatientIds = patientSource.sortedPatientIds ? patientSource.sortedPatientIds() : [];
-    console.log("4. Patient IDs successfully loaded into PatientSource:", loadedPatientIds);
+    console.log("3. Patient IDs successfully loaded into PatientSource:", loadedPatientIds);
 
     if (!loadedPatientIds.includes(patientId)) {
         console.warn(`WARNING: Target patientId '${patientId}' was NOT found in the PatientSource index! Check ID matching.`);
@@ -96,13 +87,14 @@ export default async function handler(req, res) {
     // Guardrail C: Inspect execution results keys
     const rawResultsContainer = results?.patientResults || results || {};
     const availablePatientKeys = Object.keys(rawResultsContainer);
-    console.log("5. Raw Execution Engine Result Keys found:", availablePatientKeys);
+    console.log("4. Raw Execution Engine Result Keys found:", availablePatientKeys);
 
     // Flexible key resolution (exact match, case-insensitive, or single fallback)
     let matchedKey = availablePatientKeys.find(k => k === patientId || k.toLowerCase() === patientId.toLowerCase());
+    
     if (!matchedKey && availablePatientKeys.length === 1) {
         matchedKey = availablePatientKeys[0];
-        console.log(`[CQL Engine] Falling back to single available key: "${matchedKey}"`);
+        console.log(`[CQL Engine] Exact match failed. Falling back to single available key: "${matchedKey}"`);
     }
 
     const patientResults = matchedKey ? rawResultsContainer[matchedKey] : null;
