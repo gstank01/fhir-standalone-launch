@@ -225,6 +225,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('CQL Runtime Engine Error:', error);
-    return res.status(500).json({ success: false, error: 'Internal error evaluating referral triage logic.' });
+    // TEMPORARY DEBUG - revert once diagnosed
+    return res.status(500).json({ success: false, error: `DEBUG: ${error.message}` });
   }
 }
