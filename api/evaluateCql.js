@@ -3,403 +3,78 @@ const cqlfhir = require('cql-exec-fhir');
 const fs = require('fs');
 const path = require('path');
 
-// -------------------------------------------------------------
-// Dynamically resolve absolute path for Vercel execution context
-// -------------------------------------------------------------
-
-const jsonPath = path.join(
-    process.cwd(),
-    'api',
-    'logic.json'
-);
-
+// Dynamically resolve absolute path for the Vercel execution context
+const jsonPath = path.join(process.cwd(), 'api', 'logic.json'); 
 let compiledLogicJson;
 
 try {
-    const rawData = fs.readFileSync(
-        jsonPath,
-        'utf8'
-    );
-
-    compiledLogicJson = JSON.parse(rawData);
-
+  const rawData = fs.readFileSync(jsonPath, 'utf8');
+  compiledLogicJson = JSON.parse(rawData);
 } catch (e) {
-
-    const rootPath = path.join(
-        process.cwd(),
-        'logic.json'
-    );
-
-    compiledLogicJson = JSON.parse(
-        fs.readFileSync(
-            rootPath,
-            'utf8'
-        )
-    );
+  const rootPath = path.join(process.cwd(), 'logic.json');
+  compiledLogicJson = JSON.parse(fs.readFileSync(rootPath, 'utf8'));
 }
 
-
-// -------------------------------------------------------------
-// API Handler
-// -------------------------------------------------------------
-
 export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // -----------------------------------------------------------
-    // CORS
-    // -----------------------------------------------------------
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
 
-    res.setHeader(
-        'Access-Control-Allow-Origin',
-        '*'
-    );
-
-    res.setHeader(
-        'Access-Control-Allow-Methods',
-        'POST, OPTIONS'
-    );
-
-    res.setHeader(
-        'Access-Control-Allow-Headers',
-        'Content-Type'
-    );
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+  try {
+    const { fhirBundle, patientId } = req.body;
+    if (!fhirBundle || !patientId) {
+      return res.status(400).json({ error: 'Missing fhirBundle or patientId.' });
     }
 
-    if (req.method !== 'POST') {
-        return res.status(405).json({
-            error: 'Use POST.'
-        });
+    console.log(`[CQL Backend] Evaluating for target patientId: ${patientId}`);
+    console.log(`[CQL Backend] Bundle entry count: ${fhirBundle.entry ? fhirBundle.entry.length : 0}`);
+
+    // 2. Initialize the Library directly using your pre-compiled JSON blueprint
+    const library = new cql.Library(compiledLogicJson);
+    
+    // 3. Initialize the runtime Execution runner environment
+    const executor = new cql.Executor(library);
+
+    // 4. Initialize the compatible FHIR R4 data model provider
+    const patientSource = cqlfhir.PatientSource.FHIRv401(); 
+    patientSource.loadBundles([fhirBundle]);
+
+    // 5. Run evaluation across your patient source bundle records
+    const results = executor.exec(patientSource);
+
+    // DEBUG LOG: Print all patient keys recognized by the CQL engine
+    const availablePatientKeys = Object.keys(results?.patientResults || results || {});
+    console.log("[CQL Backend] Patient IDs registered in engine execution results:", availablePatientKeys);
+
+    const patientResults = results?.patientResults?.[patientId] || results?.[patientId];
+
+    if (!patientResults) {
+      return res.status(422).json({ 
+        success: false, 
+        error: `No calculation found for patientId: ${patientId}. Engine found keys: [${availablePatientKeys.join(', ')}].` 
+      });
     }
 
-
-    // -----------------------------------------------------------
-    // Main processing
-    // -----------------------------------------------------------
-
-    try {
-
-        const {
-            fhirBundle,
-            patientId
-        } = req.body;
-
-
-        // ---------------------------------------------------------
-        // Validate request
-        // ---------------------------------------------------------
-
-        if (!fhirBundle || !patientId) {
-            return res.status(400).json({
-                error: 'Missing fhirBundle or patientId.'
-            });
-        }
-
-
-        console.log(
-            `[CQL Backend] Target Patient ID: ${patientId}`
-        );
-
-        console.log(
-            `[CQL Backend] Bundle entry count: ${
-                fhirBundle.entry
-                    ? fhirBundle.entry.length
-                    : 0
-            }`
-        );
-
-
-        // ---------------------------------------------------------
-        // Extract resources from bundle
-        // ---------------------------------------------------------
-
-        const bundleResources = (
-            fhirBundle.entry || []
-        )
-            .map(entry => entry.resource)
-            .filter(Boolean);
-
-
-        // ---------------------------------------------------------
-        // DEBUG:
-        // Show resource types received
-        // ---------------------------------------------------------
-
-        console.log(
-            '[CQL Backend] Resource types received:',
-            bundleResources.map(
-                resource => resource.resourceType
-            )
-        );
-
-
-        // ---------------------------------------------------------
-        // Find Patient resources
-        // ---------------------------------------------------------
-
-        const patientResources = bundleResources
-            .filter(
-                resource =>
-                    resource.resourceType === 'Patient'
-            )
-            .map(
-                resource => ({
-                    resourceType: resource.resourceType,
-                    id: resource.id
-                })
-            );
-
-
-        // ---------------------------------------------------------
-        // Find Encounter resources
-        // ---------------------------------------------------------
-
-        const encounterResources = bundleResources
-            .filter(
-                resource =>
-                    resource.resourceType === 'Encounter'
-            )
-            .map(
-                resource => ({
-                    resourceType: resource.resourceType,
-                    id: resource.id
-                })
-            );
-
-
-        console.log(
-            '[CQL Backend] Patient resources received:',
-            patientResources
-        );
-
-        console.log(
-            '[CQL Backend] Encounter resources received:',
-            encounterResources
-        );
-
-
-        // ---------------------------------------------------------
-        // Confirm target Patient exists in bundle
-        // ---------------------------------------------------------
-
-        const matchingPatient = patientResources.find(
-            patient =>
-                patient.id === patientId
-        );
-
-
-        if (!matchingPatient) {
-
-            console.error(
-                `[CQL Backend] Patient ID ${patientId} ` +
-                `was NOT found in the supplied bundle.`
-            );
-
-            return res.status(422).json({
-                success: false,
-
-                error:
-                    `Patient ID ${patientId} was not found ` +
-                    `in the supplied FHIR bundle.`,
-
-                patientIdsInBundle:
-                    patientResources.map(
-                        patient => patient.id
-                    )
-            });
-        }
-
-
-        console.log(
-            `[CQL Backend] Confirmed ` +
-            `Patient/${patientId} exists in bundle.`
-        );
-
-
-        // ---------------------------------------------------------
-        // Initialize the CQL Library
-        // ---------------------------------------------------------
-
-        const library = new cql.Library(
-            compiledLogicJson
-        );
-
-
-        // ---------------------------------------------------------
-        // Initialize CQL Executor
-        // ---------------------------------------------------------
-
-        const executor = new cql.Executor(
-            library
-        );
-
-
-        // ---------------------------------------------------------
-        // Initialize FHIR R4 data provider
-        // ---------------------------------------------------------
-
-        const patientSource =
-            cqlfhir.PatientSource.FHIRv401();
-
-
-        // ---------------------------------------------------------
-        // Load Bundle into FHIR PatientSource
-        // ---------------------------------------------------------
-
-        patientSource.loadBundles([
-            fhirBundle
-        ]);
-
-
-        console.log(
-            '[CQL Backend] Bundle loaded into FHIR PatientSource.'
-        );
-
-
-        // ---------------------------------------------------------
-        // Execute CQL
-        // ---------------------------------------------------------
-
-        const results =
-            executor.exec(patientSource);
-
-
-        // ---------------------------------------------------------
-        // DEBUG:
-        // Print COMPLETE CQL execution result
-        // ---------------------------------------------------------
-
-        console.log(
-            '[CQL Backend] Full execution result:',
-            JSON.stringify(
-                results,
-                null,
-                2
-            )
-        );
-
-
-        // ---------------------------------------------------------
-        // DEBUG:
-        // Identify available patient keys
-        // ---------------------------------------------------------
-
-        const availablePatientKeys =
-            Object.keys(
-                results?.patientResults ||
-                results ||
-                {}
-            );
-
-
-        console.log(
-            '[CQL Backend] Patient IDs registered ' +
-            'in engine execution results:',
-            availablePatientKeys
-        );
-
-
-        // ---------------------------------------------------------
-        // Look up calculation for target patient
-        // ---------------------------------------------------------
-
-        const patientResults =
-            results?.patientResults?.[patientId] ||
-            results?.[patientId];
-
-
-        // ---------------------------------------------------------
-        // No result found
-        // ---------------------------------------------------------
-
-        if (!patientResults) {
-
-            return res.status(422).json({
-
-                success: false,
-
-                error:
-                    `No calculation found for patientId: ` +
-                    `${patientId}. ` +
-                    `Engine found keys: [` +
-                    `${availablePatientKeys.join(', ')}` +
-                    `].`
-
-            });
-        }
-
-
-        // ---------------------------------------------------------
-        // Check final CQL expression
-        // ---------------------------------------------------------
-
-        const qualifiesForQueue =
-            patientResults[
-                "Is Valid Referral Triage Process"
-            ] === true;
-
-
-        console.log(
-            `[CQL Backend] ` +
-            `Is Valid Referral Triage Process = ` +
-            `${qualifiesForQueue}`
-        );
-
-
-        // ---------------------------------------------------------
-        // Successful response
-        // ---------------------------------------------------------
-
-        return res.status(200).json({
-
-            success: true,
-
-            actionRequired:
-                qualifiesForQueue,
-
-            queueItem:
-                qualifiesForQueue
-                    ? {
-                        id: `idx-${Date.now()}`,
-
-                        patientId: patientId,
-
-                        timestamp:
-                            new Date().toISOString(),
-
-                        status:
-                            "Pending Action",
-
-                        details:
-                            "Referral criteria matched " +
-                            "via local ELM JSON execution."
-                    }
-                    : null
-
-        });
-
-
-    } catch (error) {
-
-        // ---------------------------------------------------------
-        // Runtime error
-        // ---------------------------------------------------------
-
-        console.error(
-            "[CQL Runtime Engine Error]",
-            error
-        );
-
-
-        return res.status(500).json({
-
-            success: false,
-
-            error: error.message
-
-        });
-
-    }
+    // 6. Look up the calculation flag directly from your final rule name
+    const qualifiesForQueue = patientResults["Is Valid Referral Triage Process"] === true;
+
+    return res.status(200).json({
+      success: true,
+      actionRequired: qualifiesForQueue,
+      queueItem: qualifiesForQueue ? {
+        id: `idx-${Date.now()}`,
+        patientId: patientId,
+        timestamp: new Date().toISOString(),
+        status: "Pending Action",
+        details: "Referral criteria matched via local ELM JSON execution."
+      } : null
+    });
+
+  } catch (error) {
+    console.error("CQL Runtime Engine Error:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
 }
