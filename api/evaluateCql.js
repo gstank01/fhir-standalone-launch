@@ -3,141 +3,85 @@ const cqlfhir = require('cql-exec-fhir');
 const fs = require('fs');
 const path = require('path');
 
-const jsonPath = path.join(process.cwd(), 'api', 'logic.json'); 
-let compiledLogicJson;
-
-try {
-  compiledLogicJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-} catch (e) {
-  compiledLogicJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'logic.json'), 'utf8'));
+// --- Load compiled CQL ELM + its dependency libraries once, at module load ---
+function loadJsonRelativeToApi(filename) {
+  const primary = path.join(process.cwd(), 'api', filename);
+  const fallback = path.join(process.cwd(), filename);
+  const target = fs.existsSync(primary) ? primary : fallback;
+  return JSON.parse(fs.readFileSync(target, 'utf8'));
 }
 
-export default async function handler(req, res) {
-  // CORS setup
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+const compiledLogicJson = loadJsonRelativeToApi('logic.json');
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
+// FHIRHelpers.json is the compiled ELM for FHIRHelpers.cql (version 4.0.1),
+// produced by the same CQL-to-ELM translator run that produced logic.json.
+// logic.json's "includes" section references FHIRHelpers, and statements
+// like "Referral Triage Encounters" call FHIRHelpers.ToConcept directly.
+// Without handing this library to cql-execution via a Repository, that
+// FunctionRef can't be resolved and the engine will not produce results.
+//
+// If you don't have this file yet: run your ReferralTriageLogic.cql through
+// the CQL-to-ELM translator with FHIRHelpers.cql on the include path, and
+// copy the resulting FHIRHelpers.json next to logic.json.
+const fhirHelpersJson = loadJsonRelativeToApi('FHIRHelpers.json');
 
-  try {
-    const { patientBundle, encounterBundle, patientId } = req.body;
+const repository = new cql.Repository({ FHIRHelpers: fhirHelpersJson });
+const library = new cql.Library(compiledLogicJson, repository);
 
-    if (!patientBundle || !encounterBundle || !patientId) {
-        return res.status(400).json({ error: 'Missing patientBundle, encounterBundle, or patientId.' });
-    }
+/**
+ * Merge one or more raw FHIR Bundles (Patient search results, Encounter
+ * search results, EpisodeOfCare search results, etc.) representing a single
+ * patient into one "collection" Bundle that cql-exec-fhir's PatientSource
+ * can load.
+ */
+function buildPristineBundle(bundles) {
+  const allEntries = [];
 
-    console.log("--- CQL GATEKEEPER GUARDRAIL DEBUG ---");
-    console.log("1. Target Patient ID received from frontend:", patientId);
-
-    // 1. Safely extract all original entries and FORCE a fullUrl if Epic omitted it
-    const allEntries = [];
-    
-    const processEntries = (bundle) => {
-        if (!bundle || !bundle.entry) return;
-        bundle.entry.forEach(entry => {
-            if (entry.resource) {
-                // cql-exec-fhir relies heavily on fullUrl for internal linking
-                if (!entry.fullUrl) {
-                    entry.fullUrl = `${entry.resource.resourceType}/${entry.resource.id}`;
-                }
-                allEntries.push(entry);
-            }
-        });
-    };
-
-    processEntries(patientBundle);
-    processEntries(encounterBundle);
-
-    console.log(`2. Total Bundle Entries Merged & Normalized: ${allEntries.length}`);
-
-    // 2. Hard-validate the Patient resource exists
-    const patientResources = allEntries
-        .map(e => e.resource)
-        .filter(r => r && r.resourceType === 'Patient');
-    
-    if (patientResources.length === 0) {
-        const foundTypes = [...new Set(allEntries.map(e => e.resource?.resourceType))].join(', ');
-        return res.status(422).json({ 
-            success: false, 
-            error: `Backend merged entries but found NO 'Patient' resource. Resources found: [${foundTypes}]` 
-        });
-    }
-
-    // 3. Construct a pristine collection bundle
-    const pristineBundle = {
-        resourceType: 'Bundle',
-        type: 'collection',
-        entry: allEntries
-    };
-
-    // 4. Initialize engine using standard FHIR R4 source
-    const library = new cql.Library(compiledLogicJson);
-    const executor = new cql.Executor(library);
-    const patientSource = cqlfhir.PatientSource.FHIRv400();
-
-    // 5. Load the pristine bundle natively
-    patientSource.loadBundles([pristineBundle]);
-
-    const loadedPatientIds = patientSource.sortedPatientIds ? patientSource.sortedPatientIds() : [];
-    console.log("3. Patient IDs successfully loaded into PatientSource:", loadedPatientIds);
-
-    // 6. Execute engine
-    const results = executor.exec(patientSource);
-    
-    // 7. Bulletproof Result Extraction
-    const rawResultsContainer = results?.patientResults || results || {};
-    const availablePatientKeys = Object.keys(rawResultsContainer);
-    console.log("4. Raw Execution Engine Result Keys found:", availablePatientKeys);
-
-    let patientResults = null;
-
-    if (availablePatientKeys.length > 0) {
-        // Find by exact match, suffix (e.g. Patient/123), or inclusion
-        let matchedKey = availablePatientKeys.find(k => {
-            const normalizedK = k.toLowerCase();
-            const normalizedId = patientId.toLowerCase();
-            return normalizedK === normalizedId || 
-                   normalizedK.endsWith(`/${normalizedId}`) || 
-                   normalizedK.includes(normalizedId);
-        });
-
-        // FORCE FALLBACK: If we still didn't match the string perfectly, 
-        // but the engine calculated a result, just grab the first one.
-        if (!matchedKey) {
-            matchedKey = availablePatientKeys[0];
-            console.log(`[CQL Engine] String match failed. Forcing fallback to first available key: "${matchedKey}"`);
-        }
-
-        patientResults = rawResultsContainer[matchedKey];
-    }
-
-    if (!patientResults) {
-        console.error(`ERROR: Engine executed but found no calculation for patientId: ${patientId}. Keys found: [${availablePatientKeys.join(', ')}]`);
-        return res.status(422).json({ 
-            success: false, 
-            error: `Engine executed but found no calculation. Keys found: [${availablePatientKeys.join(', ')}]. Loaded IDs: [${loadedPatientIds.join(', ')}]` 
-        });
-    }
-
-    // 8. Look up your boolean statement exactly as named in the CQL
-    const qualifiesForQueue = patientResults["Is Valid Referral Triage Process"] === true;
-
-    return res.status(200).json({
-        success: true,
-        actionRequired: qualifiesForQueue,
-        queueItem: qualifiesForQueue ? {
-            id: `idx-${Date.now()}`,
-            patientId: patientId,
-            timestamp: new Date().toISOString(),
-            status: "Pending Action",
-            details: "Referral criteria matched via local ELM JSON execution."
-        } : null
+  bundles.forEach(bundle => {
+    if (!bundle || !bundle.entry) return;
+    bundle.entry.forEach(entry => {
+      if (!entry.resource) return;
+      // cql-exec-fhir relies on fullUrl for internal linking between
+      // resources; force one if the source server omitted it.
+      if (!entry.fullUrl) {
+        entry.fullUrl = `${entry.resource.resourceType}/${entry.resource.id}`;
+      }
+      allEntries.push(entry);
     });
+  });
 
-  } catch (error) {
-    console.error("CQL Runtime Engine Error:", error);
-    return res.status(500).json({ success: false, error: error.message });
+  const hasPatient = allEntries.some(e => e.resource.resourceType === 'Patient');
+  if (!hasPatient) {
+    const foundTypes = [...new Set(allEntries.map(e => e.resource.resourceType))].join(', ');
+    throw new Error(`Merged bundle has no Patient resource. Resource types present: [${foundTypes}]`);
   }
+
+  return { resourceType: 'Bundle', type: 'collection', entry: allEntries };
 }
+
+/**
+ * Runs the compiled ReferralTriageLogic CQL against a single pristine FHIR
+ * Bundle (one patient's worth of merged resources).
+ */
+function runReferralTriageCql(pristineBundle) {
+  const executor = new cql.Executor(library);
+  const patientSource = cqlfhir.PatientSource.FHIRv400();
+
+  patientSource.loadBundles([pristineBundle]);
+
+  // PatientSource does not expose a public "list loaded patient ids" method
+  // (there is no sortedPatientIds()) - currentPatient()/nextPatient() is the
+  // only supported way to inspect what got loaded. exec() below consumes
+  // that same iterator, so we reset it after this one-time sanity check.
+  const loadedPatient = patientSource.currentPatient();
+  const loadedPatientId = loadedPatient ? loadedPatient.getId() : null;
+  patientSource.reset();
+
+  const results = executor.exec(patientSource);
+  const rawResultsContainer = results?.patientResults || results || {};
+  const availablePatientKeys = Object.keys(rawResultsContainer);
+
+  return { loadedPatientId, availablePatientKeys, rawResultsContainer };
+}
+
+module.exports = { buildPristineBundle, runReferralTriageCql };
