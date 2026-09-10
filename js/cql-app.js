@@ -104,7 +104,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ identifier })
             });
 
-            const evalData = await evalResponse.json();
+            // Read as text first so a non-JSON response (an HTML error/404
+            // page, for example) produces a readable error instead of an
+            // opaque "Unexpected token" JSON.parse failure.
+            const rawBody = await evalResponse.text();
+            let evalData;
+            try {
+                evalData = JSON.parse(rawBody);
+            } catch {
+                throw new Error(
+                    `Server returned a non-JSON response (HTTP ${evalResponse.status}). ` +
+                    `First 200 chars: ${rawBody.slice(0, 200)}`
+                );
+            }
+
             if (!evalResponse.ok) {
                 throw new Error(evalData.error || 'CQL evaluation failed on server.');
             }
