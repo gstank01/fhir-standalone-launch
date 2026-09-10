@@ -11,22 +11,36 @@ function loadJsonRelativeToApi(filename) {
   return JSON.parse(fs.readFileSync(target, 'utf8'));
 }
 
-const compiledLogicJson = loadJsonRelativeToApi('logic.json');
+// IMPORTANT: this is loaded lazily (on first use, inside getLibrary()) rather
+// than at module top-level. If logic.json or FHIRHelpers.json are missing or
+// malformed, throwing here at import time would crash the whole serverless
+// function before your route handler's try/catch ever runs - which is what
+// produces an HTML platform error page instead of a JSON error response.
+// Loading lazily means the failure happens *inside* the handler's try/catch,
+// so the caller gets a normal JSON 500 with a real message.
+let cachedLibrary = null;
 
-// FHIRHelpers.json is the compiled ELM for FHIRHelpers.cql (version 4.0.1),
-// produced by the same CQL-to-ELM translator run that produced logic.json.
-// logic.json's "includes" section references FHIRHelpers, and statements
-// like "Referral Triage Encounters" call FHIRHelpers.ToConcept directly.
-// Without handing this library to cql-execution via a Repository, that
-// FunctionRef can't be resolved and the engine will not produce results.
-//
-// If you don't have this file yet: run your ReferralTriageLogic.cql through
-// the CQL-to-ELM translator with FHIRHelpers.cql on the include path, and
-// copy the resulting FHIRHelpers.json next to logic.json.
-const fhirHelpersJson = loadJsonRelativeToApi('FHIRHelpers.json');
+function getLibrary() {
+  if (cachedLibrary) return cachedLibrary;
 
-const repository = new cql.Repository({ FHIRHelpers: fhirHelpersJson });
-const library = new cql.Library(compiledLogicJson, repository);
+  const compiledLogicJson = loadJsonRelativeToApi('logic.json');
+
+  // FHIRHelpers.json is the compiled ELM for FHIRHelpers.cql (version 4.0.1),
+  // produced by the same CQL-to-ELM translator run that produced logic.json.
+  // logic.json's "includes" section references FHIRHelpers, and statements
+  // like "Referral Triage Encounters" call FHIRHelpers.ToConcept directly.
+  // Without handing this library to cql-execution via a Repository, that
+  // FunctionRef can't be resolved and the engine will not produce results.
+  //
+  // If you don't have this file yet: run your ReferralTriageLogic.cql through
+  // the CQL-to-ELM translator with FHIRHelpers.cql on the include path, and
+  // copy the resulting FHIRHelpers.json next to logic.json.
+  const fhirHelpersJson = loadJsonRelativeToApi('FHIRHelpers.json');
+
+  const repository = new cql.Repository({ FHIRHelpers: fhirHelpersJson });
+  cachedLibrary = new cql.Library(compiledLogicJson, repository);
+  return cachedLibrary;
+}
 
 /**
  * Merge one or more raw FHIR Bundles (Patient search results, Encounter
@@ -64,7 +78,7 @@ function buildPristineBundle(bundles) {
  * Bundle (one patient's worth of merged resources).
  */
 function runReferralTriageCql(pristineBundle) {
-  const executor = new cql.Executor(library);
+  const executor = new cql.Executor(getLibrary());
   const patientSource = cqlfhir.PatientSource.FHIRv400();
 
   patientSource.loadBundles([pristineBundle]);
