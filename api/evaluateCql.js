@@ -171,23 +171,22 @@ export default async function handler(req, res) {
     }
     const fhirId = patientBundle.entry[0].resource.id;
 
+    // Single search: Encounters for this patient, plus the Patient and any
+    // EpisodeOfCare resources they reference. Multiple query params must be
+    // joined with "&" (not repeated "?"), and the correct R4 search
+    // parameter on Encounter for this relationship is "episode-of-care"
+    // (hyphenated) - its expression is Encounter.episodeOfCare.
     const encounterBundle = await fhirGet(
-      `${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:patient`,
+      `${fhirUrl}/Encounter?patient=${fhirId}` +
+        `&_include=Encounter:patient` +
+        `&_include=Encounter:episode-of-care`,
       accessToken
     );
 
-    // EpisodeOfCare doesn't support a "patient" search parameter on this
-    // FHIR server - it has to be searched via "encounter" instead. Pull the
-    // Encounter ids out of the bundle we already have and search on those.
-    // (encounterBundle may also contain the _include'd Patient resource, so
-    // filter to just Encounter entries first.)
-    const encounterRefs = (encounterBundle.entry || [])
-      .filter(e => e.resource && e.resource.resourceType === 'Encounter')
-      .map(e => `Encounter/${e.resource.id}`);
-
-    const episodeBundle = encounterRefs.length > 0
-      ? await fhirGet(`${fhirUrl}/EpisodeOfCare?encounter=${encounterRefs.join(',')}`, accessToken)
-      : { resourceType: 'Bundle', type: 'searchset', entry: [] };
+    // No separate EpisodeOfCare fetch needed - it comes back as part of
+    // encounterBundle via the _include above. buildPristineBundle will pick
+    // up all resource types (Patient, Encounter, EpisodeOfCare) from it.
+    const episodeBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
 
     const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
     const { loadedPatientId, availablePatientKeys, rawResultsContainer } = runReferralTriageCql(pristineBundle);
