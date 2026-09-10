@@ -11,7 +11,7 @@ context Patient
 // https://cql.hl7.org/STU3/02-authorsguide.html - In CQL, an OID system is specified exactly as a uniform resource identifier (URI) string inside the single quotes
 
 codesystem "HospitalCodes": 'urn:oid:1.2.840.114350.1.13.520.3.7.10.698084.30'
-code "Referral Triage Code": '2611' from "HospitalCodes" display 'Referral Triage'
+code "Referral Triage Code": '1234' from "HospitalCodes" display 'Referral Triage'
 
 // 2. Filter Encounter entries down to only Referral Triage processes
 define "Referral Triage Encounters":

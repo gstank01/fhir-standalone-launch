@@ -1,3 +1,226 @@
 {
-    "_comment":"this is our CQL logic"
+  "library": {
+    "identifier": {
+      "id": "ReferralTriageLogic",
+      "version": "1.0.0"
+    },
+    "schemaIdentifier": {
+      "id": "urn:hl7-org:elm",
+      "version": "r1"
+    },
+    "usings": {
+      "def": [
+        {
+          "localIdentifier": "System",
+          "uri": "urn:hl7-org:elm-types:r1"
+        },
+        {
+          "localIdentifier": "FHIR",
+          "uri": "http://hl7.org/fhir",
+          "version": "4.0.1"
+        }
+      ]
+    },
+    "includes": {
+      "def": [
+        {
+          "path": "FHIRHelpers",
+          "version": "4.0.1",
+          "localIdentifier": "FHIRHelpers"
+        }
+      ]
+    },
+    "codeSystems": {
+      "def": [
+        {
+          "name": "HospitalCodes",
+          "id": "urn:oid:1.2.840.114350.1.13.520.3.7.10.698084.30",
+          "accessLevel": "Public"
+        }
+      ]
+    },
+    "codes": {
+      "def": [
+        {
+          "name": "Referral Triage Code",
+          "id": "1234",
+          "display": "Referral Triage",
+          "accessLevel": "Public",
+          "codeSystem": {
+            "name": "HospitalCodes"
+          }
+        }
+      ]
+    },
+    "contexts": {
+      "def": [
+        {
+          "name": "Patient"
+        }
+      ]
+    },
+    "statements": {
+      "def": [
+        {
+          "name": "Patient",
+          "context": "Patient",
+          "expression": {
+            "type": "SingletonFrom",
+            "operand": {
+              "type": "Retrieve",
+              "dataType": "{http://hl7.org/fhir}Patient",
+              "templateId": "http://hl7.org/fhir/StructureDefinition/Patient"
+            }
+          }
+        },
+        {
+          "name": "Referral Triage Encounters",
+          "context": "Patient",
+          "accessLevel": "Public",
+          "expression": {
+            "type": "Query",
+            "source": [
+              {
+                "alias": "E",
+                "expression": {
+                  "type": "Retrieve",
+                  "dataType": "{http://hl7.org/fhir}Encounter",
+                  "templateId": "http://hl7.org/fhir/StructureDefinition/Encounter"
+                }
+              }
+            ],
+            "where": {
+              "type": "Exists",
+              "operand": {
+                "type": "Query",
+                "source": [
+                  {
+                    "alias": "T",
+                    "expression": {
+                      "type": "Property",
+                      "path": "type",
+                      "scope": "E"
+                    }
+                  }
+                ],
+                "where": {
+                  "type": "Equivalent",
+                  "operand": [
+                    {
+                      "type": "FunctionRef",
+                      "libraryName": "FHIRHelpers",
+                      "name": "ToConcept",
+                      "operand": [
+                        {
+                          "type": "AliasRef",
+                          "name": "T"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "CodeRef",
+                      "name": "Referral Triage Code"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Active Episodes of Care",
+          "context": "Patient",
+          "accessLevel": "Public",
+          "expression": {
+            "type": "Query",
+            "source": [
+              {
+                "alias": "Episode",
+                "expression": {
+                  "type": "Retrieve",
+                  "dataType": "{http://hl7.org/fhir}EpisodeOfCare",
+                  "templateId": "http://hl7.org/fhir/StructureDefinition/EpisodeOfCare"
+                }
+              }
+            ],
+            "where": {
+              "type": "Equal",
+              "operand": [
+                {
+                  "type": "Property",
+                  "path": "status.value",
+                  "scope": "Episode"
+                },
+                {
+                  "type": "Literal",
+                  "valueType": "{urn:hl7-org:elm-types:r1}String",
+                  "value": "active"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Is Valid Referral Triage Process",
+          "context": "Patient",
+          "accessLevel": "Public",
+          "expression": {
+            "type": "Exists",
+            "operand": {
+              "type": "Query",
+              "source": [
+                {
+                  "alias": "ValidEncounter",
+                  "expression": {
+                    "type": "ExpressionRef",
+                    "name": "Referral Triage Encounters"
+                  }
+                }
+              ],
+              "where": {
+                "type": "Exists",
+                "operand": {
+                  "type": "Query",
+                  "source": [
+                    {
+                      "alias": "ActiveEpisode",
+                      "expression": {
+                        "type": "ExpressionRef",
+                        "name": "Active Episodes of Care"
+                      }
+                    }
+                  ],
+                  "where": {
+                    "type": "Equal",
+                    "operand": [
+                      {
+                        "type": "Property",
+                        "path": "episodeOfCare.reference.value",
+                        "scope": "ValidEncounter"
+                      },
+                      {
+                        "type": "Concatenate",
+                        "operand": [
+                          {
+                            "type": "Literal",
+                            "valueType": "{urn:hl7-org:elm-types:r1}String",
+                            "value": "EpisodeOfCare/"
+                          },
+                          {
+                            "type": "Property",
+                            "path": "id.value",
+                            "scope": "ActiveEpisode"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
 }
