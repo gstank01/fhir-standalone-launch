@@ -40,14 +40,14 @@ export default async function handler(req, res) {
     const patientSource = cqlfhir.PatientSource.FHIRv401(); 
     patientSource.loadBundles([fhirBundle]);
 
-    // 5. Run evaluation across your patient source bundle records
+    // 5. Run evaluation and safely extract results across different engine output structures
     const results = executor.exec(patientSource);
-    const patientResults = results.patientResults[patientId];
+    const patientResults = results?.patientResults?.[patientId] || results?.[patientId];
 
     if (!patientResults) {
-      return res.status(404).json({ 
+      return res.status(422).json({ 
         success: false, 
-        error: `No calculation found for patientId: ${patientId}.` 
+        error: `No calculation found for patientId: ${patientId}. Ensure the bundle contains a valid Patient resource.` 
       });
     }
 
