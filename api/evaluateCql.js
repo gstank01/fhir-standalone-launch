@@ -28,6 +28,24 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing patientBundle, encounterBundle, or patientId.' });
     }
 
+    console.log("--- CQL GATEKEEPER GUARDRAIL DEBUG ---");
+    console.log("1. Target Patient ID received from frontend:", patientId);
+
+    // Guardrail A: Validate incoming bundles structure
+    const patientEntries = patientBundle?.entry || [];
+    const encounterEntries = encounterBundle?.entry || [];
+
+    console.log(`2. Patient Bundle Entries Count: ${patientEntries.length}`);
+    patientEntries.forEach((entry, index) => {
+        console.log(`   - Patient [${index}] resourceType: ${entry.resource?.resourceType}, id: ${entry.resource?.id}`);
+    });
+
+    console.log(`3. Encounter Bundle Entries Count: ${encounterEntries.length}`);
+    encounterEntries.forEach((entry, index) => {
+        const subRef = entry.resource?.subject?.reference || 'No subject reference';
+        console.log(`   - Encounter [${index}] resourceType: ${entry.resource?.resourceType}, id: ${entry.resource?.id}, subject: ${subRef}`);
+    });
+
     // 1. Manually extract raw resources to strip away Epic's searchset wrappers
     const allResources = [];
     
@@ -43,7 +61,6 @@ export default async function handler(req, res) {
     const patientResources = allResources.filter(r => r.resourceType === 'Patient');
     
     if (patientResources.length === 0) {
-        // If this triggers, it tells us exactly what resources WERE parsed
         const foundTypes = [...new Set(allResources.map(r => r.resourceType))].join(', ');
         return res.status(422).json({ 
             success: false, 
@@ -65,13 +82,33 @@ export default async function handler(req, res) {
 
     // 5. Load the pristine bundle natively
     patientSource.loadBundles([pristineBundle]);
+
+    // Guardrail B: Verify Patient Source registration
+    const loadedPatientIds = patientSource.sortedPatientIds ? patientSource.sortedPatientIds() : [];
+    console.log("4. Patient IDs successfully loaded into PatientSource:", loadedPatientIds);
+
+    if (!loadedPatientIds.includes(patientId)) {
+        console.warn(`WARNING: Target patientId '${patientId}' was NOT found in the PatientSource index! Check ID matching.`);
+    }
+
     const results = executor.exec(patientSource);
     
-    // 6. Safely extract results
-    const availablePatientKeys = Object.keys(results?.patientResults || results || {});
-    const patientResults = results?.patientResults?.[patientId] || results?.[patientId];
+    // Guardrail C: Inspect execution results keys
+    const rawResultsContainer = results?.patientResults || results || {};
+    const availablePatientKeys = Object.keys(rawResultsContainer);
+    console.log("5. Raw Execution Engine Result Keys found:", availablePatientKeys);
+
+    // Flexible key resolution (exact match, case-insensitive, or single fallback)
+    let matchedKey = availablePatientKeys.find(k => k === patientId || k.toLowerCase() === patientId.toLowerCase());
+    if (!matchedKey && availablePatientKeys.length === 1) {
+        matchedKey = availablePatientKeys[0];
+        console.log(`[CQL Engine] Falling back to single available key: "${matchedKey}"`);
+    }
+
+    const patientResults = matchedKey ? rawResultsContainer[matchedKey] : null;
 
     if (!patientResults) {
+        console.error(`ERROR: Engine executed but found no calculation for patientId: ${patientId}. Keys found: [${availablePatientKeys.join(', ')}]`);
         return res.status(422).json({ 
             success: false, 
             error: `Engine executed but found no calculation for patientId: ${patientId}. Keys found: [${availablePatientKeys.join(', ')}]. Patient IDs in bundle: [${patientResources.map(p=>p.id).join(', ')}]` 
