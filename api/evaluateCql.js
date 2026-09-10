@@ -3,17 +3,13 @@ const cqlfhir = require('cql-exec-fhir');
 const fs = require('fs');
 const path = require('path');
 
-// Dynamically resolve absolute path for the Vercel execution context
 const jsonPath = path.join(process.cwd(), 'api', 'logic.json'); 
 let compiledLogicJson;
 
 try {
-  const rawData = fs.readFileSync(jsonPath, 'utf8');
-  compiledLogicJson = JSON.parse(rawData);
+  compiledLogicJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
 } catch (e) {
-  // Fallback if your file sits in the root instead of the api/ folder
-  const rootPath = path.join(process.cwd(), 'logic.json');
-  compiledLogicJson = JSON.parse(fs.readFileSync(rootPath, 'utf8'));
+  compiledLogicJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'logic.json'), 'utf8'));
 }
 
 export default async function handler(req, res) {
@@ -29,34 +25,60 @@ export default async function handler(req, res) {
     const { patientBundle, encounterBundle, patientId } = req.body;
 
     if (!patientBundle || !encounterBundle || !patientId) {
-        return res.status(400).json({ 
-            error: 'Missing patientBundle, encounterBundle, or patientId.' 
+        return res.status(400).json({ error: 'Missing patientBundle, encounterBundle, or patientId.' });
+    }
+
+    // 1. Manually extract raw resources to strip away Epic's searchset wrappers
+    const allResources = [];
+    
+    if (patientBundle.entry) {
+        patientBundle.entry.forEach(e => { if (e.resource) allResources.push(e.resource); });
+    }
+    
+    if (encounterBundle.entry) {
+        encounterBundle.entry.forEach(e => { if (e.resource) allResources.push(e.resource); });
+    }
+
+    // 2. Hard-validate the Patient resource exists
+    const patientResources = allResources.filter(r => r.resourceType === 'Patient');
+    
+    if (patientResources.length === 0) {
+        // If this triggers, it tells us exactly what resources WERE parsed
+        const foundTypes = [...new Set(allResources.map(r => r.resourceType))].join(', ');
+        return res.status(422).json({ 
+            success: false, 
+            error: `Backend stripped wrappers but found NO 'Patient' resource. Resources found: [${foundTypes}]` 
         });
     }
 
+    // 3. Construct a pristine collection bundle guaranteed to parse in cql-exec-fhir
+    const pristineBundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        entry: allResources.map(r => ({ resource: r }))
+    };
+
+    // 4. Initialize engine
     const library = new cql.Library(compiledLogicJson);
     const executor = new cql.Executor(library);
     const patientSource = cqlfhir.PatientSource.FHIRv401();
 
-    // 🚀 The engine natively correlates resources across multiple bundles
-    patientSource.loadBundles([patientBundle, encounterBundle]);
-
+    // 5. Load the pristine bundle natively
+    patientSource.loadBundles([pristineBundle]);
     const results = executor.exec(patientSource);
     
+    // 6. Safely extract results
     const availablePatientKeys = Object.keys(results?.patientResults || results || {});
-    console.log("[CQL Backend] Patient IDs registered in engine execution results:", availablePatientKeys);
-
-    // Safely extract results whether the engine returns a nested object or a direct map
     const patientResults = results?.patientResults?.[patientId] || results?.[patientId];
 
     if (!patientResults) {
         return res.status(422).json({ 
             success: false, 
-            error: `CQL engine found no results for patientId: ${patientId}. Keys found: [${availablePatientKeys.join(', ')}]` 
+            error: `Engine executed but found no calculation for patientId: ${patientId}. Keys found: [${availablePatientKeys.join(', ')}]. Patient IDs in bundle: [${patientResources.map(p=>p.id).join(', ')}]` 
         });
     }
 
-    // Look up your boolean statement exactly as named in the CQL
+    // 7. Look up your boolean statement exactly as named in the CQL
     const qualifiesForQueue = patientResults["Is Valid Referral Triage Process"] === true;
 
     return res.status(200).json({
