@@ -51,49 +51,35 @@ function initReferralUI() {
 }
 
 async function sendToCqlGatekeeper(patientBundle, encounterBundle, targetPatientId) {
-  try {
-    // Merge the entries from both FHIR bundles
-    const combinedEntries = [
-        ...(patientBundle.entry || []),
-        ...(encounterBundle.entry || [])
-    ];
+    try {
+        console.log("Sending native bundles to CQL Gatekeeper...");
 
-    // Construct a new ad-hoc FHIR bundle
-    const unifiedBundle = {
-        resourceType: "Bundle",
-        type: "collection",
-        entry: combinedEntries
-    };
+        const response = await fetch('/api/evaluateCql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                patientId: targetPatientId,
+                patientBundle: patientBundle,       // Send exactly as received from Step C
+                encounterBundle: encounterBundle    // Send exactly as received from Step E
+            })
+        });
 
-    const response = await fetch('/api/evaluateCql', { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        patientId: targetPatientId,
-        fhirBundle: unifiedBundle // Send the merged bundle containing the Patient
-      })
-    });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Server returned HTTP ${response.status}: ${errorText}`);
+        }
 
-    // 2. Validate HTTP Status range (200-299) before processing JSON
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Server returned HTTP ${response.status}: ${errorText}`);
+        const data = await response.json();
+
+        if (data.success && data.actionRequired) {
+            console.log(`Routing patient ${targetPatientId} to Action Queue.`, data.queueItem);
+        } else {
+            console.log(`Patient ${targetPatientId} evaluated successfully. No triage action required.`);
+        }
+
+    } catch (error) {
+        console.error("Failed to send data to CQL Gatekeeper:", error);
     }
-
-    const data = await response.json();
-    
-    // 3. Process routing if gatekeeper logic evaluates true
-    if (data.success && data.actionRequired) {
-      // Push data.routingData directly to your database queue for human triage
-      console.log(`Routing patient ${targetPatientId} to Action Queue.`, data.routingData);
-    } else {
-      console.log(`Patient ${targetPatientId} evaluated successfully. No triage action required.`);
-    }
-
-  } catch (error) {
-    console.error("Failed to send data to CQL Gatekeeper:", error);
-    // Optional UI fallback: alert(`Gatekeeper error: ${error.message}`);
-  }
 }
 
 
