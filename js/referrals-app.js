@@ -50,17 +50,27 @@ function initReferralUI() {
     });
 }
 
-async function sendToCqlGatekeeper(extractedBundle, targetPatientId) {
+async function sendToCqlGatekeeper(patientBundle, encounterBundle, targetPatientId) {
   try {
-    // 1. Corrected URL targeting your dedicated serverless endpoint
+    // Merge the entries from both FHIR bundles
+    const combinedEntries = [
+        ...(patientBundle.entry || []),
+        ...(encounterBundle.entry || [])
+    ];
+
+    // Construct a new ad-hoc FHIR bundle
+    const unifiedBundle = {
+        resourceType: "Bundle",
+        type: "collection",
+        entry: combinedEntries
+    };
+
     const response = await fetch('/api/evaluateCql', { 
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         patientId: targetPatientId,
-        fhirBundle: extractedBundle // The Encounter and EpisodeOfCare data bundle
+        fhirBundle: unifiedBundle // Send the merged bundle containing the Patient
       })
     });
 
@@ -158,9 +168,9 @@ async function executeReferralWorkflow(identifier) {
             }
 
             log("SUCCESS: Encounter Bundle Received.");
-            
+
             log("Sending bundle to CQL Gatekeeper for evaluation...");
-            await sendToCqlGatekeeper(encounterBundle, fhirId);
+            await sendToCqlGatekeeper(patientBundle, encounterBundle, fhirId);
 
             log("Opening Encounter Record in JSON inspector window...");
 
@@ -169,8 +179,6 @@ async function executeReferralWorkflow(identifier) {
 
             log("Opening Encounter Record in JSON inspector window...");
 
-            // Pass the Encounter Bundle to your pop-up window
-            openReferralInspectorWindow(`Encounters & Patient Banner for MRN: ${identifier}`, fhirId, encounterBundle, patientBundle);
 
         } else {
             log("WARNING: No matching patient resource found for the given identifier.");
