@@ -15,6 +15,7 @@
            <h3>Select Workflow</h3>
             <button id="launchBtn" class="primary-btn">GET Appointments</button>
             <button id="btn-referral-info" class="second-btn">GET Referral Info</button> 
+            <button id="btn-cql-execute" class="second-btn">Execute CQL Logic</button>
         </div>
 
         <div id="worklistModal" class="worklist-box">
@@ -254,6 +255,39 @@
         </div>
     </div>
 </div>
+
+<!-- STEP 7: CQL PATIENT WORKLIST & EVALUATION MODAL -->
+<div id="cqlModal" class="modal-overlay">
+    <div class="modal" style="max-width: 850px; width: 90%; max-height: 90vh; overflow-y: auto;">
+        <h2 class="modal-header">CQL Logic Evaluation Worklist</h2>
+        <p style="font-size: 14px; color: #555;">Select a patient from the prepopulated table below to fire the FHIR query and evaluate CQL rules:</p>
+        
+        <div style="max-height: 250px; overflow-y: auto; margin: 15px 0; border: 1px solid #ddd; border-radius: 4px;">
+            <table class="param-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f4f4f4;">
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Action</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Patient Name</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">MRN / Identifier</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">DOB</th>
+                    </tr>
+                </thead>
+                <tbody id="cqlPatientTableBody">
+                    <!-- Prepopulated or dynamically bound rows will render here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="cqlResultContainer" style="margin-top: 15px; padding: 12px; background: #1e1e1e; color: #4af626; border-radius: 4px; display: none;">
+            <strong>CQL Evaluation Output:</strong>
+            <pre id="cqlResultOutput" style="font-size: 12px; font-family: monospace; white-space: pre-wrap; margin-top: 5px;"></pre>
+        </div>
+
+        <div class="modal-actions" style="margin-top: 20px;">
+            <button id="cancelCqlBtn" class="secondary">Close Window</button>
+        </div>
+    </div>
+</div>
  
     <!-- SCRIPT INCLUDES -->
     <script src="js/config.js"></script>
@@ -263,6 +297,7 @@
     <script src="js/patientStore.js"></script>
     <script src="js/referrals-app.js"></script>
     <script src="js/referral-info-window.js"></script>
+    <script src="js/cql-app.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
