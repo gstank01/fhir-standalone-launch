@@ -171,10 +171,23 @@ export default async function handler(req, res) {
     }
     const fhirId = patientBundle.entry[0].resource.id;
 
-    const [encounterBundle, episodeBundle] = await Promise.all([
-      fhirGet(`${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:patient`, accessToken),
-      fhirGet(`${fhirUrl}/EpisodeOfCare?patient=${fhirId}`, accessToken)
-    ]);
+    const encounterBundle = await fhirGet(
+      `${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:patient`,
+      accessToken
+    );
+
+    // EpisodeOfCare doesn't support a "patient" search parameter on this
+    // FHIR server - it has to be searched via "encounter" instead. Pull the
+    // Encounter ids out of the bundle we already have and search on those.
+    // (encounterBundle may also contain the _include'd Patient resource, so
+    // filter to just Encounter entries first.)
+    const encounterRefs = (encounterBundle.entry || [])
+      .filter(e => e.resource && e.resource.resourceType === 'Encounter')
+      .map(e => `Encounter/${e.resource.id}`);
+
+    const episodeBundle = encounterRefs.length > 0
+      ? await fhirGet(`${fhirUrl}/EpisodeOfCare?encounter=${encounterRefs.join(',')}`, accessToken)
+      : { resourceType: 'Bundle', type: 'searchset', entry: [] };
 
     const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
     const { loadedPatientId, availablePatientKeys, rawResultsContainer } = runReferralTriageCql(pristineBundle);
@@ -212,10 +225,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('CQL Runtime Engine Error:', error);
-    // TEMPORARY DEBUG: echoing error.message to the client to diagnose the
-    // 500. Revert to the generic message below once you've captured what
-    // this says - don't ship raw internal error text to callers long-term.
-    return res.status(500).json({ success: false, error: `DEBUG: ${error.message}` });
-    // return res.status(500).json({ success: false, error: 'Internal error evaluating referral triage logic.' });
+    return res.status(500).json({ success: false, error: 'Internal error evaluating referral triage logic.' });
   }
 }
