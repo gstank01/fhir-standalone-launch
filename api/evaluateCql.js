@@ -212,6 +212,10 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('CQL Runtime Engine Error:', error);
-    return res.status(500).json({ success: false, error: 'Internal error evaluating referral triage logic.' });
+    // TEMPORARY DEBUG: echoing error.message to the client to diagnose the
+    // 500. Revert to the generic message below once you've captured what
+    // this says - don't ship raw internal error text to callers long-term.
+    return res.status(500).json({ success: false, error: `DEBUG: ${error.message}` });
+    // return res.status(500).json({ success: false, error: 'Internal error evaluating referral triage logic.' });
   }
 }
