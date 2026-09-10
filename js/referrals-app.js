@@ -50,6 +50,27 @@ function initReferralUI() {
     });
 }
 
+async function sendToCqlGatekeeper(extractedBundle, targetPatientId) {
+  const response = await fetch('https://vercel.app', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      patientId: targetPatientId,
+      fhirBundle: extractedBundle // The Encounter and EpisodeOfCare data bundle
+    })
+  });
+
+  const data = await response.json();
+  
+  if (data.success && data.actionRequired) {
+    // Push data.routingData directly to your database queue for human triage
+    console.log(`Routing patient ${targetPatientId} to Action Queue.`);
+  }
+}
+
+
 // The master function for the workflow
 async function executeReferralWorkflow(identifier) {
     try {
