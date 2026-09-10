@@ -1,8 +1,20 @@
 const cql = require('cql-execution');
 const cqlfhir = require('cql-exec-fhir');
+const fs = require('fs');
+const path = require('path');
 
-// 1. Load the pre-compiled ELM JSON file directly from your local directory
-const compiledLogicJson = require('./logic.json');
+// Dynamically resolve absolute path for the Vercel execution context
+const jsonPath = path.join(process.cwd(), 'api', 'logic.json'); 
+let compiledLogicJson;
+
+try {
+  const rawData = fs.readFileSync(jsonPath, 'utf8');
+  compiledLogicJson = JSON.parse(rawData);
+} catch (e) {
+  // Fallback if your file sits in the root instead of the api/ folder
+  const rootPath = path.join(process.cwd(), 'logic.json');
+  compiledLogicJson = JSON.parse(fs.readFileSync(rootPath, 'utf8'));
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
