@@ -1,5 +1,3 @@
-// js/referral.js
-
 function initReferralUI() {
     // 1. Get references to our DOM elements
     const btnReferralInfo = document.getElementById('btn-referral-info');
@@ -14,8 +12,9 @@ function initReferralUI() {
     // 2. Show the modal when "Referral info" is clicked
     btnReferralInfo.addEventListener('click', () => {
         if (referralIdentifierInput) {
-            referralIdentifierInput.value = ''; // clear out old inputs
+            referralIdentifierInput.value = '';
         }
+
         if (referralModal) {
             referralModal.classList.add('active');
         }
@@ -32,7 +31,6 @@ function initReferralUI() {
     if (cancelReferralBtn && referralModal) {
         cancelReferralBtn.addEventListener('click', () => {
             referralModal.classList.remove('active');
-            log("Referral info fetch canceled by user.");
         });
     }
 
@@ -51,52 +49,192 @@ function initReferralUI() {
             startReferralFetchBtn.disabled = true;
             startReferralFetchBtn.textContent = "Fetching...";
 
-            log(`[Referral Flow] Starting sequence for identifier: ${identifier}`);
+            console.log(
+                `[Referral Flow] Starting sequence for identifier: ${identifier}`
+            );
 
-            // Start the API chain and wait for it to finish
-            await executeReferralWorkflow(identifier);
-
-            // Re-enable the button when done
-            startReferralFetchBtn.disabled = false;
-            startReferralFetchBtn.textContent = "Get info";
+            try {
+                await executeReferralWorkflow(identifier);
+            } finally {
+                // Always re-enable the button when the workflow is finished
+                startReferralFetchBtn.disabled = false;
+                startReferralFetchBtn.textContent = "Get info";
+            }
         });
     }
 }
 
-// Master function for the full referral workflow chain
+
+async function sendToCqlGatekeeper(
+    patientBundle,
+    encounterBundle,
+    targetPatientId
+) {
+    try {
+        // Merge the entries from both FHIR bundles
+        const combinedEntries = [
+            ...(patientBundle.entry || []),
+            ...(encounterBundle.entry || [])
+        ];
+
+        // Construct a new ad-hoc FHIR collection Bundle
+        const unifiedBundle = {
+            resourceType: "Bundle",
+            type: "collection",
+            entry: combinedEntries
+        };
+
+        // ---------------------------------------------------------
+        // Debug: Show what we are sending to the CQL backend
+        // ---------------------------------------------------------
+
+        console.log(
+            "[Referral Debug] CQL target Patient ID:",
+            targetPatientId
+        );
+
+        console.log(
+            "[Referral Debug] Unified bundle resource types:",
+            unifiedBundle.entry.map(
+                entry => entry.resource?.resourceType
+            )
+        );
+
+        console.log(
+            "[Referral Debug] Patients in unified bundle:",
+            unifiedBundle.entry
+                .filter(
+                    entry => entry.resource?.resourceType === "Patient"
+                )
+                .map(entry => ({
+                    resourceType: entry.resource?.resourceType,
+                    id: entry.resource?.id
+                }))
+        );
+
+        console.log(
+            "[Referral Debug] Encounters in unified bundle:",
+            unifiedBundle.entry
+                .filter(
+                    entry => entry.resource?.resourceType === "Encounter"
+                )
+                .map(entry => ({
+                    resourceType: entry.resource?.resourceType,
+                    id: entry.resource?.id
+                }))
+        );
+
+        // ---------------------------------------------------------
+        // Send bundle to CQL Gatekeeper
+        // ---------------------------------------------------------
+
+        const response = await fetch('/api/evaluateCql', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                patientId: targetPatientId,
+                fhirBundle: unifiedBundle
+            })
+        });
+
+        // Validate HTTP Status range (200-299)
+        if (!response.ok) {
+            const errorText = await response.text();
+
+            throw new Error(
+                `Server returned HTTP ${response.status}: ${errorText}`
+            );
+        }
+
+        const data = await response.json();
+
+        // Process routing if gatekeeper logic evaluates true
+        if (data.success && data.actionRequired) {
+            console.log(
+                `Routing patient ${targetPatientId} to Action Queue.`,
+                data.routingData
+            );
+        } else {
+            console.log(
+                `Patient ${targetPatientId} evaluated successfully. ` +
+                `No triage action required.`
+            );
+        }
+
+    } catch (error) {
+        console.error(
+            "Failed to send data to CQL Gatekeeper:",
+            error
+        );
+
+        // Optional UI fallback
+        // alert(`Gatekeeper error: ${error.message}`);
+    }
+}
+
+
+// -------------------------------------------------------------
+// Master function for the workflow
+// -------------------------------------------------------------
+
 async function executeReferralWorkflow(identifier) {
     try {
-        log("--- STARTING API CHAIN VIA VERCEL ---");
+        log("--- STARTING API CHAIN VIA Vercel ---");
         log(`Initiating workflow for identifier: ${identifier}`);
 
-        // Step A & B: Request Access Token from Vercel backend
-        log("Step A & B: Requesting Access Token and FHIR URL from Vercel...");
+        // ---------------------------------------------------------
+        // Step A & B:
+        // Ask Vercel backend to acquire Access Token and return FHIR URL
+        // ---------------------------------------------------------
+
+        log(
+            "Step A & B: Asking Vercel to securely acquire Access Token..."
+        );
+
         const tokenResponse = await fetch('/api/getPatient', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ identifier: identifier })
+            body: JSON.stringify({
+                identifier: identifier
+            })
         });
 
         const tokenData = await tokenResponse.json();
 
         if (!tokenResponse.ok) {
-            throw new Error(tokenData.error || "Failed to acquire token from backend.");
+            throw new Error(
+                tokenData.error || "Failed to acquire token."
+            );
         }
 
         const accessToken = tokenData.token;
-        const fhirUrl = tokenData.fhirUrl || (typeof CONFIG !== 'undefined' ? CONFIG.FHIRURL : '');
+        const fhirUrl = tokenData.fhirUrl;
 
         if (!fhirUrl) {
-            throw new Error("FHIR base URL is missing. Check your configuration or Vercel environment variables.");
+            throw new Error(
+                "FHIRURL environment variable is missing on the Vercel backend."
+            );
         }
 
-        log("SUCCESS: Access Token and FHIR URL acquired successfully.");
+        log(
+            "SUCCESS: Access Token and FHIR URL acquired from Vercel."
+        );
 
-        // Step C: Patient Lookup using Patient?identifier={identifier}
-        const patientSearchUrl = `${fhirUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
-        log(`Step C: Fetching Patient -> ${patientSearchUrl}`);
+        // ---------------------------------------------------------
+        // Step C:
+        // Patient Lookup
+        // ---------------------------------------------------------
+
+        const patientSearchUrl =
+            `${fhirUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
+
+        log(
+            `Step C: Fetching Patient -> ${patientSearchUrl}`
+        );
 
         const patientResponse = await fetch(patientSearchUrl, {
             method: 'GET',
@@ -109,24 +247,70 @@ async function executeReferralWorkflow(identifier) {
         const patientBundle = await patientResponse.json();
 
         if (!patientResponse.ok) {
-            throw new Error(`Patient lookup failed: ${JSON.stringify(patientBundle)}`);
+            throw new Error(
+                `Patient lookup failed: ${JSON.stringify(patientBundle)}`
+            );
         }
 
         log("SUCCESS: Patient Lookup Bundle Received.");
 
-        // Step D: Extract FHIR ID & Validate Entries
-        if (!patientBundle.entry || patientBundle.entry.length === 0) {
-            log("WARNING: No matching patient resource found for the given identifier.");
+        // ---------------------------------------------------------
+        // Step D:
+        // Find the actual Patient resource
+        // Do NOT assume entry[0] is the Patient.
+        // ---------------------------------------------------------
+
+        const patientEntry = (patientBundle.entry || []).find(
+            entry => entry.resource?.resourceType === "Patient"
+        );
+
+        if (!patientEntry) {
+            log(
+                "WARNING: No Patient resource found in the returned bundle."
+            );
+
             alert("Patient not found in EHR.");
             return;
         }
 
-        const fhirId = patientBundle.entry[0].resource.id;
-        log(`Step D: Extracted logical Patient FHIR ID: ${fhirId}`);
+        const fhirPatientId = patientEntry.resource.id;
 
-        // Step E: Fetch Encounters using the extracted FHIR ID
-        const encounterUrl = `${fhirUrl}/Encounter?patient=${encodeURIComponent(fhirId)}&_include=Encounter:EpisodeOfCare`;
-        log(`Step E: Fetching Encounters -> ${encounterUrl}`);
+        if (!fhirPatientId) {
+            throw new Error(
+                "Patient resource does not contain an id."
+            );
+        }
+
+        log(
+            `Step D: Extracted logical FHIR Patient ID: ${fhirPatientId}`
+        );
+
+        // ---------------------------------------------------------
+        // Debug:
+        // Confirm returned Patient ID
+        // ---------------------------------------------------------
+
+        console.log(
+            "[Referral Debug] Patient ID:",
+            fhirPatientId
+        );
+
+        console.log(
+            "[Referral Debug] Patient resource:",
+            patientEntry.resource
+        );
+
+        // ---------------------------------------------------------
+        // Step E:
+        // Fetch Encounters using the Patient ID
+        // ---------------------------------------------------------
+
+        const encounterUrl =
+            `${fhirUrl}/Encounter?patient=${encodeURIComponent(fhirPatientId)}&_include=Encounter:EpisodeOfCare`;
+
+        log(
+            `Step E: Fetching Encounters -> ${encounterUrl}`
+        );
 
         const encounterResponse = await fetch(encounterUrl, {
             method: 'GET',
@@ -139,24 +323,91 @@ async function executeReferralWorkflow(identifier) {
         const encounterBundle = await encounterResponse.json();
 
         if (!encounterResponse.ok) {
-            throw new Error(`Encounter lookup failed: ${JSON.stringify(encounterBundle)}`);
+            throw new Error(
+                `Encounter lookup failed: ${JSON.stringify(encounterBundle)}`
+            );
         }
 
         log("SUCCESS: Encounter Bundle Received.");
-        log("Opening Encounter & Patient Record in inspector window...");
 
-        // Open inspection window passing both bundles and extracted details
-        if (typeof openReferralInspectorWindow === 'function') {
-            openReferralInspectorWindow(`Encounters & Patient Banner for MRN: ${identifier}`, fhirId, encounterBundle, patientBundle);
-        } else if (typeof openJsonInspectionWindow === 'function') {
-            openJsonInspectionWindow(`Encounters & Patient Banner for MRN: ${identifier}`, fhirId, encounterBundle);
-        }
+        // ---------------------------------------------------------
+        // Debug:
+        // Show Encounter IDs and resource types
+        // ---------------------------------------------------------
+
+        console.log(
+            "[Referral Debug] Encounter resources:",
+            (encounterBundle.entry || [])
+                .filter(
+                    entry => entry.resource?.resourceType === "Encounter"
+                )
+                .map(entry => ({
+                    resourceType: entry.resource?.resourceType,
+                    id: entry.resource?.id
+                }))
+        );
+
+        console.log(
+            "[Referral Debug] All Encounter bundle resource types:",
+            (encounterBundle.entry || []).map(
+                entry => entry.resource?.resourceType
+            )
+        );
+
+        // ---------------------------------------------------------
+        // Step F:
+        // CQL evaluation
+        //
+        // IMPORTANT:
+        // Send the FHIR PATIENT ID, not an Encounter ID.
+        // ---------------------------------------------------------
+
+        log(
+            "Sending bundle to CQL Gatekeeper for evaluation..."
+        );
+
+        await sendToCqlGatekeeper(
+            patientBundle,
+            encounterBundle,
+            fhirPatientId
+        );
+
+        // ---------------------------------------------------------
+        // Step G:
+        // Open inspector
+        // ---------------------------------------------------------
+
+        log(
+            "Opening Encounter Record in JSON inspector window..."
+        );
+
+        openReferralInspectorWindow(
+            `Encounters & Patient Banner for MRN: ${identifier}`,
+            fhirPatientId,
+            encounterBundle,
+            patientBundle
+        );
+
+        log(
+            "Encounter Record opened in JSON inspector window."
+        );
 
         log("--- API CHAIN COMPLETE ---");
 
     } catch (error) {
-        log(`<span style="color: red;">ERROR: Referral Workflow Failed: ${error.message}</span>`);
-        console.error("Referral Workflow Failed:", error);
-        alert(`Error: ${error.message}`);
+        log(
+            `<span style="color: red;">` +
+            `ERROR: Referral Workflow Failed: ${error.message}` +
+            `</span>`
+        );
+
+        console.error(
+            "Referral Workflow Failed:",
+            error
+        );
+
+        alert(
+            `Error: ${error.message}`
+        );
     }
 }
