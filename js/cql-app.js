@@ -120,9 +120,9 @@ document.addEventListener('DOMContentLoaded', () => {
             cqlResultOutput.textContent = `Found Patient FHIR ID (${fhirId}). Fetching encounters...`;
             log(`SUCCESS: Extracted logical Patient FHIR ID: ${fhirId}`);
 
-            // Fetch Encounters matching target patient including EpisodeOfCare
-            log(`Fetching Encounters -> ${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:EpisodeOfCare`);
-            const encounterUrl = `${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:EpisodeOfCare`;
+            // Fetch Encounters matching target patient including Encounter:patient
+            log(`Fetching Encounters -> ${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:patient`);
+            const encounterUrl = `${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:patient`;
             const encounterResponse = await fetch(encounterUrl, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
