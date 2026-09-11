@@ -56,19 +56,60 @@ function buildPristineBundle(bundles) {
   return { resourceType: 'Bundle', type: 'collection', entry: allEntries };
 }
 
+// Small helper for logging: counts entries by resourceType so we can see
+// what actually made it into a bundle without dumping any PHI (names,
+// identifiers, dates) - just resource types and counts.
+function summarizeBundle(bundle) {
+  const counts = {};
+  (bundle?.entry || []).forEach(e => {
+    const type = e?.resource?.resourceType || 'UNKNOWN';
+    counts[type] = (counts[type] || 0) + 1;
+  });
+  return counts;
+}
+
 function runReferralTriageCql(pristineBundle) {
+  console.log('CQL: merged bundle resource counts:', summarizeBundle(pristineBundle));
+
   const executor = new cql.Executor(getLibrary());
   const patientSource = cqlfhir.PatientSource.FHIRv400();
-
   patientSource.loadBundles([pristineBundle]);
-
-  const loadedPatient = patientSource.currentPatient();
-  const loadedPatientId = loadedPatient ? loadedPatient.getId() : null;
-  patientSource.reset();
 
   const results = executor.exec(patientSource);
   const rawResultsContainer = results?.patientResults || results || {};
   const availablePatientKeys = Object.keys(rawResultsContainer);
+  console.log('CQL: exec() returned patient keys:', availablePatientKeys);
+
+  // DIAGNOSTIC ONLY - uses its own freshly-loaded PatientSource, completely
+  // separate from the one passed to exec() above. Calling currentPatient()/
+  // reset() on the SAME instance that exec() consumes was likely corrupting
+  // the internal cursor state exec() depends on, which would explain patient
+  // results coming back empty even when the bundle loaded fine.
+  let loadedPatientId = null;
+  try {
+    const diagnosticSource = cqlfhir.PatientSource.FHIRv400();
+    diagnosticSource.loadBundles([pristineBundle]);
+    const diagnosticPatient = diagnosticSource.currentPatient();
+    loadedPatientId = diagnosticPatient ? diagnosticPatient.getId() : null;
+    console.log('CQL: diagnostic PatientSource sees patient id:', loadedPatientId);
+  } catch (diagErr) {
+    console.error('CQL: diagnostic patient check itself threw:', diagErr);
+  }
+
+  // If we did get patient results, log the individual statement values too -
+  // these are booleans/counts, not PHI, and are the fastest way to see which
+  // part of the CQL logic (encounters found? episodes found? matched?) is
+  // behind an unexpected true/false.
+  if (availablePatientKeys.length > 0) {
+    availablePatientKeys.forEach(key => {
+      const statementResult = rawResultsContainer[key];
+      console.log(`CQL: statement results for key "${key}":`, {
+        'Referral Triage Encounters (count)': statementResult['Referral Triage Encounters']?.length ?? statementResult['Referral Triage Encounters'],
+        'Active Episodes of Care (count)': statementResult['Active Episodes of Care']?.length ?? statementResult['Active Episodes of Care'],
+        'Is Valid Referral Triage Process': statementResult['Is Valid Referral Triage Process']
+      });
+    });
+  }
 
   return { loadedPatientId, availablePatientKeys, rawResultsContainer };
 }
@@ -164,6 +205,7 @@ export default async function handler(req, res) {
       return res.status(404).json({ success: false, error: `No FHIR Patient found for identifier: ${identifier}` });
     }
     const fhirId = patientBundle.entry[0].resource.id;
+    console.log(`CQL: Patient search matched fhirId=${fhirId}, entries=${patientBundle.entry.length}`);
 
     // Single search: Encounters for this patient, plus the Patient and any
     // EpisodeOfCare resources they reference. Multiple query params must be
@@ -181,6 +223,7 @@ export default async function handler(req, res) {
     // encounterBundle via the _include above. buildPristineBundle will pick
     // up all resource types (Patient, Encounter, EpisodeOfCare) from it.
     const episodeBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
+    console.log('CQL: Encounter search resource counts:', summarizeBundle(encounterBundle));
 
     const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
     const { loadedPatientId, availablePatientKeys, rawResultsContainer } = runReferralTriageCql(pristineBundle);
@@ -190,7 +233,15 @@ export default async function handler(req, res) {
       return res.status(422).json({
         success: false,
         error: 'Engine executed but produced no patient results.',
-        loadedPatientId
+        // TEMPORARY DEBUG fields - safe to leave for now (counts/ids only,
+        // no names/dates/PHI), but strip once this is diagnosed.
+        debug: {
+          loadedPatientId,
+          fhirId,
+          patientBundleCounts: summarizeBundle(patientBundle),
+          encounterBundleCounts: summarizeBundle(encounterBundle),
+          mergedBundleCounts: summarizeBundle(pristineBundle)
+        }
       });
     }
 
