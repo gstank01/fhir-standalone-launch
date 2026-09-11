@@ -60,26 +60,28 @@ function runReferralTriageCql(pristineBundle) {
   console.log('CQL: merged bundle resource counts:', summarizeBundle(pristineBundle));
 
   const executor = new cql.Executor(getLibrary());
+  const patientSource = cqlfhir.PatientSource.FHIRv400();
+  patientSource.loadBundles([pristineBundle]);
 
-  // 1. Un-iterated PatientSource strictly for execution
-  const executionSource = cqlfhir.PatientSource.FHIRv400();
-  executionSource.loadBundles([pristineBundle]);
+  // Reset internal cursor so executor.exec() starts reading from index 0
+  patientSource.reset();
 
-  // Execute directly without touching executionSource cursor beforehand
-  const results = executor.exec(executionSource);
+  const results = executor.exec(patientSource);
   const rawResultsContainer = results?.patientResults || results || {};
   const availablePatientKeys = Object.keys(rawResultsContainer);
   console.log('CQL: exec() returned patient keys:', availablePatientKeys);
 
-  // 2. Separate PatientSource instance strictly for diagnostic ID extraction
-  let loadedPatientId = null;
-  try {
-    const diagSource = cqlfhir.PatientSource.FHIRv400();
-    diagSource.loadBundles([pristineBundle]);
-    const diagPatient = diagSource.currentPatient();
-    loadedPatientId = diagPatient ? diagPatient.getId() : null;
-  } catch (diagErr) {
-    console.error('CQL: diagnostic patient check threw:', diagErr);
+  const loadedPatientId = availablePatientKeys.length > 0 ? availablePatientKeys[0] : null;
+
+  if (availablePatientKeys.length > 0) {
+    availablePatientKeys.forEach(key => {
+      const statementResult = rawResultsContainer[key];
+      console.log(`CQL: statement results for key "${key}":`, {
+        'Referral Triage Encounters': statementResult['Referral Triage Encounters']?.length ?? statementResult['Referral Triage Encounters'],
+        'Active Episodes of Care': statementResult['Active Episodes of Care']?.length ?? statementResult['Active Episodes of Care'],
+        'Is Valid Referral Triage Process': statementResult['Is Valid Referral Triage Process']
+      });
+    });
   }
 
   return { loadedPatientId, availablePatientKeys, rawResultsContainer };
