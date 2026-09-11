@@ -108,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
             triggeringButton.textContent = 'Processing...';
         }
 
+        let evalData;
         try {
             cqlResultContainer.style.display = 'block';
             cqlResultOutput.textContent = `Evaluating referral triage logic for identifier: ${identifier}...`;
@@ -122,7 +123,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             const rawBody = await evalResponse.text();
-            let evalData;
             try {
                 evalData = JSON.parse(rawBody);
             } catch {
@@ -133,6 +133,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (!evalResponse.ok) {
+                // Show the full payload (includes our temporary debug fields)
+                // in the result panel, not just the error string, so the
+                // diagnostics are visible without checking server logs.
+                cqlResultOutput.textContent = JSON.stringify(evalData, null, 2);
                 throw new Error(evalData.error || 'CQL evaluation failed on server.');
             }
 
@@ -142,7 +146,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             safeLog(`<span style="color: red;">ERROR: CQL Workflow Failed: ${escapeHtml(error.message)}</span>`);
-            cqlResultOutput.textContent = `Execution Error: ${error.message}`;
+            // Only overwrite with a plain message if we haven't already shown
+            // the full response payload (e.g. the non-JSON-response case above
+            // never gets that far, so it still needs this fallback text).
+            if (!evalData) {
+                cqlResultOutput.textContent = `Execution Error: ${error.message}`;
+            }
         } finally {
             // Restore interactive capability back to the user element
             if (triggeringButton) {
