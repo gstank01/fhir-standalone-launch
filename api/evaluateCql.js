@@ -8,7 +8,6 @@ function getLibrary() {
   if (cachedLibrary) return cachedLibrary;
 
   const compiledLogicJson = require('./logic.json');
-
   const fhirHelpersJson = require('./FHIRHelpers.json');
 
   const repository = new cql.Repository({ FHIRHelpers: fhirHelpersJson });
@@ -16,9 +15,7 @@ function getLibrary() {
   return cachedLibrary;
 }
 
-// Merge one or more raw FHIR Bundles representing a single patient into one
-// "collection" Bundle that cql-exec-fhir's PatientSource can load.
-// Deduplicate entries by fullUrl and filter out OperationOutcome resources
+// Merge and deduplicate raw FHIR Bundles into a single collection Bundle
 function buildPristineBundle(bundles) {
   const entryMap = new Map();
 
@@ -26,14 +23,13 @@ function buildPristineBundle(bundles) {
     if (!bundle || !bundle.entry) return;
     bundle.entry.forEach(entry => {
       if (!entry.resource) return;
-      
-      // Filter out non-clinical outcome resources
+
+      // Omit non-clinical OperationOutcome resources
       if (entry.resource.resourceType === 'OperationOutcome') return;
 
       const fullUrl = entry.fullUrl || `${entry.resource.resourceType}/${entry.resource.id}`;
       entry.fullUrl = fullUrl;
 
-      // Keep only the first occurrence of each unique resource
       if (!entryMap.has(fullUrl)) {
         entryMap.set(fullUrl, entry);
       }
@@ -51,9 +47,6 @@ function buildPristineBundle(bundles) {
   return { resourceType: 'Bundle', type: 'collection', entry: allEntries };
 }
 
-// Small helper for logging: counts entries by resourceType so we can see
-// what actually made it into a bundle without dumping any PHI (names,
-// identifiers, dates) - just resource types and counts.
 function summarizeBundle(bundle) {
   const counts = {};
   (bundle?.entry || []).forEach(e => {
@@ -67,21 +60,24 @@ function runReferralTriageCql(pristineBundle) {
   console.log('CQL: merged bundle resource counts:', summarizeBundle(pristineBundle));
 
   const executor = new cql.Executor(getLibrary());
-  // Use FHIRv401 to match FHIR 4.0.1 schema in logic.json
-  const patientSource = cqlfhir.PatientSource.FHIRv401();
-  patientSource.loadBundles([pristineBundle]);
 
-  const results = executor.exec(patientSource);
+  // 1. Un-iterated PatientSource strictly for execution
+  const executionSource = cqlfhir.PatientSource.FHIRv400();
+  executionSource.loadBundles([pristineBundle]);
+
+  // Execute directly without touching executionSource cursor beforehand
+  const results = executor.exec(executionSource);
   const rawResultsContainer = results?.patientResults || results || {};
   const availablePatientKeys = Object.keys(rawResultsContainer);
   console.log('CQL: exec() returned patient keys:', availablePatientKeys);
 
+  // 2. Separate PatientSource instance strictly for diagnostic ID extraction
   let loadedPatientId = null;
   try {
-    const diagnosticSource = cqlfhir.PatientSource.FHIRv401();
-    diagnosticSource.loadBundles([pristineBundle]);
-    const diagnosticPatient = diagnosticSource.currentPatient();
-    loadedPatientId = diagnosticPatient ? diagnosticPatient.getId() : null;
+    const diagSource = cqlfhir.PatientSource.FHIRv400();
+    diagSource.loadBundles([pristineBundle]);
+    const diagPatient = diagSource.currentPatient();
+    loadedPatientId = diagPatient ? diagPatient.getId() : null;
   } catch (diagErr) {
     console.error('CQL: diagnostic patient check threw:', diagErr);
   }
@@ -182,23 +178,12 @@ export default async function handler(req, res) {
     const fhirId = patientBundle.entry[0].resource.id;
     console.log(`CQL: Patient search matched fhirId=${fhirId}, entries=${patientBundle.entry.length}`);
 
-    // Single search: Encounters for this patient, plus the Patient and any
-    // EpisodeOfCare resources they reference. Multiple query params must be
-    // joined with "&" (not repeated "?"), and the correct R4 search
-    // parameter on Encounter for this relationship is "episode-of-care"
-    // (hyphenated) - its expression is Encounter.episodeOfCare.
     const encounterBundle = await fhirGet(
-      `${fhirUrl}/Encounter?patient=${fhirId}` +
-        `&_include=Encounter:patient` +
-        `&_include=Encounter:episode-of-care`,
+      `${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:patient&_include=Encounter:episode-of-care`,
       accessToken
     );
 
-    // No separate EpisodeOfCare fetch needed - it comes back as part of
-    // encounterBundle via the _include above. buildPristineBundle will pick
-    // up all resource types (Patient, Encounter, EpisodeOfCare) from it.
     const episodeBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
-    console.log('CQL: Encounter search resource counts:', summarizeBundle(encounterBundle));
 
     const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
     const { loadedPatientId, availablePatientKeys, rawResultsContainer } = runReferralTriageCql(pristineBundle);
@@ -208,8 +193,6 @@ export default async function handler(req, res) {
       return res.status(422).json({
         success: false,
         error: 'Engine executed but produced no patient results.',
-        // TEMPORARY DEBUG fields - safe to leave for now (counts/ids only,
-        // no names/dates/PHI), but strip once this is diagnosed.
         debug: {
           loadedPatientId,
           fhirId,
@@ -244,7 +227,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('CQL Runtime Engine Error:', error);
-    // TEMPORARY DEBUG - revert once diagnosed
     return res.status(500).json({ success: false, error: `DEBUG: ${error.message}` });
   }
 }
