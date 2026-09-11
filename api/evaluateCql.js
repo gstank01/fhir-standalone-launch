@@ -2,16 +2,6 @@ const crypto = require('crypto');
 const cql = require('cql-execution');
 const cqlfhir = require('cql-exec-fhir');
 
-// Loaded lazily (on first use, inside getLibrary()) rather than at module
-// top-level, so a missing/malformed file surfaces as a normal JSON error
-// from inside the handler's try/catch instead of crashing the function.
-//
-// IMPORTANT: these must be literal require() calls (not fs.readFileSync with
-// a dynamically-built path) so Vercel's build-time file tracer can detect
-// that evaluateCql.js depends on logic.json/FHIRHelpers.json and actually
-// bundles them into the deployed function. A dynamic fs path can silently
-// fail to get included, producing ENOENT at runtime even though the file
-// exists in your repo. Both files must live in this same api/ folder.
 let cachedLibrary = null;
 
 function getLibrary() {
@@ -19,11 +9,6 @@ function getLibrary() {
 
   const compiledLogicJson = require('./logic.json');
 
-  // FHIRHelpers.json is the compiled ELM for FHIRHelpers.cql (version 4.0.1).
-  // logic.json's "includes" section references FHIRHelpers, and statements
-  // like "Referral Triage Encounters" call FHIRHelpers.ToConcept directly -
-  // without handing this library to cql-execution via a Repository, that
-  // FunctionRef can't be resolved and the engine won't produce results.
   const fhirHelpersJson = require('./FHIRHelpers.json');
 
   const repository = new cql.Repository({ FHIRHelpers: fhirHelpersJson });
@@ -33,21 +18,31 @@ function getLibrary() {
 
 // Merge one or more raw FHIR Bundles representing a single patient into one
 // "collection" Bundle that cql-exec-fhir's PatientSource can load.
+// Deduplicate entries by fullUrl and filter out OperationOutcome resources
 function buildPristineBundle(bundles) {
-  const allEntries = [];
+  const entryMap = new Map();
 
   bundles.forEach(bundle => {
     if (!bundle || !bundle.entry) return;
     bundle.entry.forEach(entry => {
       if (!entry.resource) return;
-      if (!entry.fullUrl) {
-        entry.fullUrl = `${entry.resource.resourceType}/${entry.resource.id}`;
+      
+      // Filter out non-clinical outcome resources
+      if (entry.resource.resourceType === 'OperationOutcome') return;
+
+      const fullUrl = entry.fullUrl || `${entry.resource.resourceType}/${entry.resource.id}`;
+      entry.fullUrl = fullUrl;
+
+      // Keep only the first occurrence of each unique resource
+      if (!entryMap.has(fullUrl)) {
+        entryMap.set(fullUrl, entry);
       }
-      allEntries.push(entry);
     });
   });
 
+  const allEntries = Array.from(entryMap.values());
   const hasPatient = allEntries.some(e => e.resource.resourceType === 'Patient');
+
   if (!hasPatient) {
     const foundTypes = [...new Set(allEntries.map(e => e.resource.resourceType))].join(', ');
     throw new Error(`Merged bundle has no Patient resource. Resource types present: [${foundTypes}]`);
@@ -72,7 +67,8 @@ function runReferralTriageCql(pristineBundle) {
   console.log('CQL: merged bundle resource counts:', summarizeBundle(pristineBundle));
 
   const executor = new cql.Executor(getLibrary());
-  const patientSource = cqlfhir.PatientSource.FHIRv400();
+  // Use FHIRv401 to match FHIR 4.0.1 schema in logic.json
+  const patientSource = cqlfhir.PatientSource.FHIRv401();
   patientSource.loadBundles([pristineBundle]);
 
   const results = executor.exec(patientSource);
@@ -80,35 +76,14 @@ function runReferralTriageCql(pristineBundle) {
   const availablePatientKeys = Object.keys(rawResultsContainer);
   console.log('CQL: exec() returned patient keys:', availablePatientKeys);
 
-  // DIAGNOSTIC ONLY - uses its own freshly-loaded PatientSource, completely
-  // separate from the one passed to exec() above. Calling currentPatient()/
-  // reset() on the SAME instance that exec() consumes was likely corrupting
-  // the internal cursor state exec() depends on, which would explain patient
-  // results coming back empty even when the bundle loaded fine.
   let loadedPatientId = null;
   try {
-    const diagnosticSource = cqlfhir.PatientSource.FHIRv400();
+    const diagnosticSource = cqlfhir.PatientSource.FHIRv401();
     diagnosticSource.loadBundles([pristineBundle]);
     const diagnosticPatient = diagnosticSource.currentPatient();
     loadedPatientId = diagnosticPatient ? diagnosticPatient.getId() : null;
-    console.log('CQL: diagnostic PatientSource sees patient id:', loadedPatientId);
   } catch (diagErr) {
-    console.error('CQL: diagnostic patient check itself threw:', diagErr);
-  }
-
-  // If we did get patient results, log the individual statement values too -
-  // these are booleans/counts, not PHI, and are the fastest way to see which
-  // part of the CQL logic (encounters found? episodes found? matched?) is
-  // behind an unexpected true/false.
-  if (availablePatientKeys.length > 0) {
-    availablePatientKeys.forEach(key => {
-      const statementResult = rawResultsContainer[key];
-      console.log(`CQL: statement results for key "${key}":`, {
-        'Referral Triage Encounters (count)': statementResult['Referral Triage Encounters']?.length ?? statementResult['Referral Triage Encounters'],
-        'Active Episodes of Care (count)': statementResult['Active Episodes of Care']?.length ?? statementResult['Active Episodes of Care'],
-        'Is Valid Referral Triage Process': statementResult['Is Valid Referral Triage Process']
-      });
-    });
+    console.error('CQL: diagnostic patient check threw:', diagErr);
   }
 
   return { loadedPatientId, availablePatientKeys, rawResultsContainer };
