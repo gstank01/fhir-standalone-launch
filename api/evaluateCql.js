@@ -30,6 +30,15 @@ async function getLibrary() {
 
 function buildPristineBundle(bundles) {
   const allEntries = [];
+  // 🐛 FIX: the Patient search result and the Encounter search's
+  // `_include=Encounter:patient` both legitimately return the same Patient
+  // resource — so without de-duping, the merged bundle ends up with two
+  // Patient entries. cql-execution's implicit `context Patient` binding is
+  // `SingletonFrom([Patient])`, which throws "requires a 0 or 1 arg array"
+  // the moment there's more than one. De-dupe by resourceType/id so each
+  // resource — Patient included — appears in the merged bundle exactly once.
+  const seenKeys = new Set();
+  let duplicatesDropped = 0;
 
   bundles.forEach(bundle => {
     if (!bundle || !bundle.entry) return;
@@ -38,9 +47,21 @@ function buildPristineBundle(bundles) {
       if (!entry.fullUrl) {
         entry.fullUrl = `${entry.resource.resourceType}/${entry.resource.id}`;
       }
+
+      const key = `${entry.resource.resourceType}/${entry.resource.id}`;
+      if (seenKeys.has(key)) {
+        duplicatesDropped++;
+        return;
+      }
+      seenKeys.add(key);
+
       allEntries.push(entry);
     });
   });
+
+  if (duplicatesDropped > 0) {
+    console.log(`[BUNDLE] Dropped ${duplicatesDropped} duplicate resource(s) found across the merged bundles.`);
+  }
 
   const hasPatient = allEntries.some(e => e.resource.resourceType === 'Patient');
   if (!hasPatient) {
