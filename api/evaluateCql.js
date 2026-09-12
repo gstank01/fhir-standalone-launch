@@ -3,29 +3,53 @@ const cql = require('cql-execution');
 const cqlfhir = require('cql-exec-fhir');
 const { neon } = require('@neondatabase/serverless');
 
-// 🐛 FIX: these used to be loaded at runtime via fs.readFileSync() from a path
+// 🐛 FIX: this used to be loaded at runtime via fs.readFileSync() from a path
 // built out of process.cwd(). Vercel decides which files to bundle into a
 // deployed serverless function by statically scanning for require()/import
 // calls; it can't see through a dynamically-constructed fs path, so
-// logic.json/FHIRHelpers.json never made it into the deployed bundle and
-// process.cwd() (== /var/task at runtime) never had them either, hence the
+// FHIRHelpers.json never made it into the deployed bundle and
+// process.cwd() (== /var/task at runtime) never had it either, hence the
 // ENOENT. A static, relative require() is something the bundler *can* see,
-// so it packages these JSON files alongside the function automatically.
-const compiledLogicJson = require('./logic.json');
+// so it packages this JSON file alongside the function automatically.
+// FHIRHelpers stays a static file — it's the standard FHIR R4 data-type
+// conversion library shared by every CQL rule, not rule-specific logic.
 const fhirHelpersJson = require('./FHIRHelpers.json');
+
+const DEFAULT_RULE_NAME = 'ReferralTriageLogic';
 
 // --- Global Token Cache Strategy ---
 let tokenCache = { access_token: null, expiresAt: 0 };
 
-let cachedLibrary = null;
+// Rules themselves now live in the cql_rules table (sql/002_create_cql_rules.sql)
+// instead of a compiled logic.json baked into the deployment — so adding or
+// changing a rule is a database write (POST /api/rules), not a redeploy.
+// Not caching the row in memory: the whole point is that a rule edit takes
+// effect on the next request, and this is a single lightweight JSONB read.
+async function getRuleFromDb(ruleName) {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not configured; cannot load CQL rules from cql_rules.');
+  }
 
-async function getLibrary() {
-  if (cachedLibrary) return cachedLibrary;
+  const sql = neon(process.env.DATABASE_URL);
+  const rows = await sql`SELECT * FROM cql_rules WHERE name = ${ruleName} AND active = true LIMIT 1`;
 
+  if (rows.length === 0) {
+    throw new Error(`No active CQL rule named "${ruleName}" found in cql_rules. Add it via POST /api/rules.`);
+  }
+
+  const rule = rows[0];
+  // Defensive: JSONB normally comes back already parsed, but don't assume it.
+  if (typeof rule.elm_json === 'string') {
+    rule.elm_json = JSON.parse(rule.elm_json);
+  }
+  return rule;
+}
+
+async function getLibrary(ruleName) {
+  const rule = await getRuleFromDb(ruleName);
   const repository = new cql.Repository({ FHIRHelpers: fhirHelpersJson });
-  cachedLibrary = new cql.Library(compiledLogicJson, repository);
-
-  return cachedLibrary;
+  const library = new cql.Library(rule.elm_json, repository);
+  return { library, rule };
 }
 
 function buildPristineBundle(bundles) {
@@ -72,7 +96,7 @@ function buildPristineBundle(bundles) {
   return { resourceType: 'Bundle', type: 'collection', entry: allEntries };
 }
 
-async function runReferralTriageCql(pristineBundle) {
+async function runCqlRule(pristineBundle, ruleName) {
   // 🐛 FIX: getLibrary() and executor.exec() are both async — this function was
   // previously calling neither with `await`, so the Executor was constructed with
   // a pending Promise instead of the actual compiled Library (making every
@@ -82,7 +106,7 @@ async function runReferralTriageCql(pristineBundle) {
   // exactly the "Engine executed but produced no patient results" symptom: the
   // patient loaded fine (that lookup is synchronous), but the CQL rules never
   // actually ran against it.
-  const library = await getLibrary();
+  const { library, rule } = await getLibrary(ruleName);
   const executor = new cql.Executor(library);
   const patientSource = cqlfhir.PatientSource.FHIRv400();
 
@@ -90,7 +114,7 @@ async function runReferralTriageCql(pristineBundle) {
 
   const loadedPatient = patientSource.currentPatient();
   const loadedPatientId = loadedPatient ? loadedPatient.getId() : null;
-  console.log(`[CQL] Library loaded with ${Object.keys(library.expressions || {}).length} expression(s). Loaded patient id: ${loadedPatientId}`);
+  console.log(`[CQL] Rule "${ruleName}" (v${rule.version}) loaded with ${Object.keys(library.expressions || {}).length} expression(s). Loaded patient id: ${loadedPatientId}`);
 
   // ✅ Execute engine matching BEFORE resetting the data collection iterator
   const results = await executor.exec(patientSource);
@@ -100,7 +124,7 @@ async function runReferralTriageCql(pristineBundle) {
   const availablePatientKeys = Object.keys(rawResultsContainer);
   console.log(`[CQL] Execution complete. Patient result keys: [${availablePatientKeys.join(', ')}]`);
 
-  return { loadedPatientId, availablePatientKeys, rawResultsContainer };
+  return { loadedPatientId, availablePatientKeys, rawResultsContainer, rule };
 }
 
 async function getAccessToken({ clientID, audienceUrl, privateKeyText }) {
@@ -216,6 +240,31 @@ function traceReferralTriageEvaluation(patientResults) {
   return trace;
 }
 
+// Fallback tracer for any rule other than ReferralTriageLogic: we don't know
+// that rule's internal structure, so just log every intermediate named
+// expression the engine computed (array length, or the value itself for
+// scalars) plus the final result expression. Still far more useful for
+// debugging than only seeing the final boolean.
+function traceGenericRuleEvaluation(patientResults, resultExpression) {
+  const trace = [];
+  const record = (step, message) => {
+    console.log(`[CQL STEP ${step}] ${message}`);
+    trace.push({ step, message });
+  };
+
+  let step = 1;
+  Object.keys(patientResults).forEach(key => {
+    if (key === resultExpression) return;
+    const value = patientResults[key];
+    const summary = Array.isArray(value) ? `list of ${value.length}` : JSON.stringify(value);
+    record(step++, `"${key}" = ${summary}`);
+  });
+
+  record(step, `Final result -> "${resultExpression}" = ${patientResults[resultExpression]}`);
+
+  return trace;
+}
+
 function extractPatientDisplayName(patientResource) {
   const name = (patientResource.name || []).find(n => n.text || n.family || (n.given && n.given.length)) || {};
   if (name.text) return name.text;
@@ -235,14 +284,15 @@ async function addToReferralQueue(queueItem) {
   try {
     const sql = neon(process.env.DATABASE_URL);
     await sql`
-      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details)
-      VALUES (${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob}, ${queueItem.status}, ${queueItem.details})
+      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details, rule_name)
+      VALUES (${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob}, ${queueItem.status}, ${queueItem.details}, ${queueItem.ruleName})
       ON CONFLICT (patient_id) DO UPDATE SET
         identifier = EXCLUDED.identifier,
         name = EXCLUDED.name,
         dob = EXCLUDED.dob,
         status = EXCLUDED.status,
         details = EXCLUDED.details,
+        rule_name = EXCLUDED.rule_name,
         updated_at = now()
     `;
     return true;
@@ -283,7 +333,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
 
   try {
-    const { identifier } = req.body || {};
+    const { identifier, ruleName = DEFAULT_RULE_NAME } = req.body || {};
     if (!identifier) {
       return res.status(400).json({ error: 'Missing identifier.' });
     }
@@ -298,7 +348,7 @@ export default async function handler(req, res) {
     }
     privateKeyText = privateKeyText.replace(/\\n/g, '\n');
 
-    console.log(`--- CQL WORKFLOW: identifier=${identifier} ---`);
+    console.log(`--- CQL WORKFLOW: identifier=${identifier}, rule=${ruleName} ---`);
 
     const accessToken = await getAccessToken({ clientID, audienceUrl, privateKeyText });
     console.log(`[AUTH] Access token acquired (cached until ~${new Date(tokenCache.expiresAt * 1000).toISOString()}).`);
@@ -333,8 +383,8 @@ export default async function handler(req, res) {
     console.log(`[BUNDLE] Merged bundle has ${pristineBundle.entry.length} entries:`, JSON.stringify(resourceTypeCounts));
 
     // 🐛 FIX: this was called without `await` even though it's async — see the
-    // comment inside runReferralTriageCql for why that produced empty results.
-    const { loadedPatientId, availablePatientKeys, rawResultsContainer } = await runReferralTriageCql(pristineBundle);
+    // comment inside runCqlRule for why that produced empty results.
+    const { loadedPatientId, availablePatientKeys, rawResultsContainer, rule } = await runCqlRule(pristineBundle, ruleName);
 
     if (availablePatientKeys.length === 0) {
       const noResultsPayload = {
@@ -355,8 +405,16 @@ export default async function handler(req, res) {
 
     const patientResults = rawResultsContainer[matchedKey];
     console.log(`[CQL RESULTS] matchedKey=${matchedKey}:`, JSON.stringify(patientResults));
-    const evaluationTrace = traceReferralTriageEvaluation(patientResults);
-    const qualifiesForQueue = patientResults['Is Valid Referral Triage Process'] === true;
+
+    // The referral-triage rule gets a bespoke, structure-aware trace; any
+    // other rule (added later via POST /api/rules) falls back to a generic
+    // dump of its intermediate results.
+    const evaluationTrace =
+      rule.name === 'ReferralTriageLogic'
+        ? traceReferralTriageEvaluation(patientResults)
+        : traceGenericRuleEvaluation(patientResults, rule.result_expression);
+
+    const qualifiesForQueue = patientResults[rule.result_expression] === true;
 
     let queueItem = null;
     let queuePersisted = null; // null = n/a, true/false once we've attempted a write
@@ -371,13 +429,15 @@ export default async function handler(req, res) {
         dob: patientResource.birthDate || null,
         timestamp: new Date().toISOString(),
         status: 'Pending Action',
-        details: 'Referral criteria matched via local ELM JSON execution.'
+        ruleName: rule.name,
+        details: `Matched rule "${rule.name}" (${rule.result_expression}).`
       };
       queuePersisted = await addToReferralQueue(queueItem);
     }
 
     const responsePayload = {
       success: true,
+      ruleName: rule.name,
       actionRequired: qualifiesForQueue,
       queueItem,
       queuePersisted,

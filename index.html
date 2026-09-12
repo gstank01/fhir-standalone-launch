@@ -262,7 +262,14 @@
     <div class="modal" style="max-width: 850px; width: 90%; max-height: 90vh; overflow-y: auto;">
         <h2 class="modal-header">CQL Logic Evaluation Worklist</h2>
         <p style="font-size: 14px; color: #555;">Select a patient from the prepopulated table below to fire the FHIR query and evaluate CQL rules:</p>
-        
+
+        <div class="worklist-selector-group" style="margin-bottom: 12px;">
+            <label for="cqlRuleSelect">CQL Rule to evaluate:</label>
+            <select id="cqlRuleSelect" class="worklist-dropdown">
+                <!-- Populated from /api/rules -->
+            </select>
+        </div>
+
         <div style="max-height: 250px; overflow-y: auto; margin: 15px 0; border: 1px solid #ddd; border-radius: 4px;">
             <table class="param-table" style="width: 100%; border-collapse: collapse;">
                 <thead>
@@ -303,6 +310,7 @@
                         <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Patient Name</th>
                         <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">MRN / Identifier</th>
                         <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">DOB</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Matched Rule</th>
                         <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Status</th>
                         <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Queued At</th>
                     </tr>
