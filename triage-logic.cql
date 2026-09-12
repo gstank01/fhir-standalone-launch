@@ -27,11 +27,20 @@ define "Active Episodes of Care":
     where Episode.status.value = 'active'
 
 // 4. Final Boolean Gatekeeper Decision (Returns TRUE/FALSE)
+// NOTE: Encounter.episodeOfCare is 0..* (a list), so it must be iterated
+// with its own alias before dotting into .reference.value — same as how
+// "Referral Triage Encounters" above iterates E.type with alias T. Writing
+// ValidEncounter.episodeOfCare.reference.value directly (chaining through
+// the list) silently evaluates to null under cql-exec-fhir, so the rule
+// would never match anything.
 define "Is Valid Referral Triage Process":
   exists (
     "Referral Triage Encounters" ValidEncounter
       where exists (
-        "Active Episodes of Care" ActiveEpisode
-          where ValidEncounter.episodeOfCare.reference.value = 'EpisodeOfCare/' + ActiveEpisode.id.value
+        ValidEncounter.episodeOfCare EOC
+          where exists (
+            "Active Episodes of Care" ActiveEpisode
+              where EOC.reference.value = 'EpisodeOfCare/' + ActiveEpisode.id.value
+          )
       )
   )

@@ -183,37 +183,53 @@
                   "type": "Query",
                   "source": [
                     {
-                      "alias": "ActiveEpisode",
+                      "alias": "EOC",
                       "expression": {
-                        "type": "ExpressionRef",
-                        "name": "Active Episodes of Care"
+                        "type": "Property",
+                        "path": "episodeOfCare",
+                        "scope": "ValidEncounter"
                       }
                     }
                   ],
                   "where": {
-                    "type": "Equal",
-                    "operand": [
-                      {
-                        "type": "Property",
-                        "path": "episodeOfCare.reference.value",
-                        "scope": "ValidEncounter"
-                      },
-                      {
-                        "type": "Concatenate",
+                    "type": "Exists",
+                    "operand": {
+                      "type": "Query",
+                      "source": [
+                        {
+                          "alias": "ActiveEpisode",
+                          "expression": {
+                            "type": "ExpressionRef",
+                            "name": "Active Episodes of Care"
+                          }
+                        }
+                      ],
+                      "where": {
+                        "type": "Equal",
                         "operand": [
                           {
-                            "type": "Literal",
-                            "valueType": "{urn:hl7-org:elm-types:r1}String",
-                            "value": "EpisodeOfCare/"
+                            "type": "Property",
+                            "path": "reference.value",
+                            "scope": "EOC"
                           },
                           {
-                            "type": "Property",
-                            "path": "id.value",
-                            "scope": "ActiveEpisode"
+                            "type": "Concatenate",
+                            "operand": [
+                              {
+                                "type": "Literal",
+                                "valueType": "{urn:hl7-org:elm-types:r1}String",
+                                "value": "EpisodeOfCare/"
+                              },
+                              {
+                                "type": "Property",
+                                "path": "id.value",
+                                "scope": "ActiveEpisode"
+                              }
+                            ]
                           }
                         ]
                       }
-                    ]
+                    }
                   }
                 }
               }
