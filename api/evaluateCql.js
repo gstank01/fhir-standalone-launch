@@ -1,32 +1,30 @@
 const crypto = require('crypto');
 const cql = require('cql-execution');
 const cqlfhir = require('cql-exec-fhir');
-const fs = require('fs');
-const path = require('path');
 const { neon } = require('@neondatabase/serverless');
+
+// 🐛 FIX: these used to be loaded at runtime via fs.readFileSync() from a path
+// built out of process.cwd(). Vercel decides which files to bundle into a
+// deployed serverless function by statically scanning for require()/import
+// calls; it can't see through a dynamically-constructed fs path, so
+// logic.json/FHIRHelpers.json never made it into the deployed bundle and
+// process.cwd() (== /var/task at runtime) never had them either, hence the
+// ENOENT. A static, relative require() is something the bundler *can* see,
+// so it packages these JSON files alongside the function automatically.
+const compiledLogicJson = require('./logic.json');
+const fhirHelpersJson = require('./FHIRHelpers.json');
 
 // --- Global Token Cache Strategy ---
 let tokenCache = { access_token: null, expiresAt: 0 };
 
-function loadJsonRelativeToApi(filename) {
-  const primary = path.join(process.cwd(), 'api', filename);
-  const fallback = path.join(process.cwd(), filename);
-  const target = fs.existsSync(primary) ? primary : fallback;
-  return JSON.parse(fs.readFileSync(target, 'utf8'));
-}
-
 let cachedLibrary = null;
 
-// This function is now async because it queries the database
 async function getLibrary() {
   if (cachedLibrary) return cachedLibrary;
 
-  const compiledLogicJson = loadJsonRelativeToApi('logic.json');
-  const fhirHelpersJson = loadJsonRelativeToApi('FHIRHelpers.json');
-
   const repository = new cql.Repository({ FHIRHelpers: fhirHelpersJson });
   cachedLibrary = new cql.Library(compiledLogicJson, repository);
-  
+
   return cachedLibrary;
 }
 
