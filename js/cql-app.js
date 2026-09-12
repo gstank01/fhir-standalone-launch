@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cqlPatientTableBody = document.getElementById('cqlPatientTableBody');
     const cqlResultContainer = document.getElementById('cqlResultContainer');
     const cqlResultOutput = document.getElementById('cqlResultOutput');
+    const cqlRuleSelect = document.getElementById('cqlRuleSelect');
 
     // Safe fallback check to ensure missing log() utilities do not crash the module execution thread
     function safeLog(message) {
@@ -17,13 +18,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!btnCqlExecute) return;
 
-    // 1. Open modal and load patient list from database via API when button is clicked
+    // 1. Open modal and load patient list + available rules from the API when button is clicked
     btnCqlExecute.addEventListener('click', async () => {
         cqlModal.classList.add('active');
         cqlResultContainer.style.display = 'none';
         safeLog('Opening CQL Logic Evaluation modal worklist...');
-        await loadCqlPatientsFromDB();
+        await Promise.all([loadCqlPatientsFromDB(), loadCqlRules()]);
     });
+
+    // 1b. Load the rules this workflow can invoke (cql_rules table, tagged
+    // for the "cql-app" workflow) so a new rule added via POST /api/rules
+    // shows up here with no code change.
+    async function loadCqlRules() {
+        if (!cqlRuleSelect) return;
+        cqlRuleSelect.innerHTML = '<option value="">Loading rules...</option>';
+        safeLog('Fetching available CQL rules via /api/rules...');
+
+        try {
+            const response = await fetch('/api/rules?workflow=cql-app&active=true');
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Failed to fetch CQL rules.');
+            }
+
+            const rules = data.rules || [];
+            if (rules.length === 0) {
+                cqlRuleSelect.innerHTML = '<option value="">No active rules found</option>';
+                safeLog('<span style="color: orange;">WARNING: No active CQL rules tagged for the cql-app workflow. Add one via POST /api/rules.</span>');
+                return;
+            }
+
+            cqlRuleSelect.innerHTML = '';
+            rules.forEach(rule => {
+                const option = document.createElement('option');
+                option.value = rule.name;
+                option.textContent = `${rule.name} (v${rule.version})${rule.description ? ' — ' + rule.description : ''}`;
+                cqlRuleSelect.appendChild(option);
+            });
+
+            safeLog(`SUCCESS: Loaded ${rules.length} active CQL rule(s).`);
+        } catch (error) {
+            cqlRuleSelect.innerHTML = '<option value="">Error loading rules</option>';
+            safeLog(`<span style="color: red;">ERROR: Failed to load CQL rules: ${escapeHtml(error.message)}</span>`);
+        }
+    }
 
     // 2. Close modal on cancel
     cancelCqlBtn.addEventListener('click', () => {
@@ -110,16 +149,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let evalData;
         try {
+            const ruleName = cqlRuleSelect && cqlRuleSelect.value ? cqlRuleSelect.value : undefined;
+
             cqlResultContainer.style.display = 'block';
-            cqlResultOutput.textContent = `Evaluating referral triage logic for identifier: ${identifier}...`;
+            cqlResultOutput.textContent = `Evaluating rule "${ruleName || '(default)'}" for identifier: ${identifier}...`;
             safeLog('--- STARTING CQL EVALUATION WORKFLOW ---');
-            safeLog(`Requesting evaluation for patient identifier: ${identifier}`);
+            safeLog(`Requesting evaluation for patient identifier: ${identifier}, rule: ${ruleName || '(default)'}`);
 
             // NOTE: Ensure your backend file routing structure matches this endpoint exactly
             const evalResponse = await fetch('/api/evaluateCql', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ identifier })
+                body: JSON.stringify(ruleName ? { identifier, ruleName } : { identifier })
             });
 
             const rawBody = await evalResponse.text();
@@ -142,6 +183,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             safeLog('SUCCESS: CQL evaluation completed successfully.');
             cqlResultOutput.textContent = JSON.stringify(evalData, null, 2);
+
+            if (evalData.actionRequired) {
+                if (evalData.queuePersisted) {
+                    safeLog(`SUCCESS: Patient ${identifier} added to the referral queue.`);
+                } else {
+                    safeLog(`<span style="color: orange;">WARNING: Patient ${identifier} matched the triage rule but could not be persisted to the referral queue (see server logs).</span>`);
+                }
+            } else {
+                safeLog(`Patient ${identifier} evaluated successfully. No triage action required.`);
+            }
+
             safeLog('--- CQL PIPELINE COMPLETE ---');
 
         } catch (error) {
