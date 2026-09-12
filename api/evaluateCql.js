@@ -53,21 +53,33 @@ function buildPristineBundle(bundles) {
   return { resourceType: 'Bundle', type: 'collection', entry: allEntries };
 }
 
-function runReferralTriageCql(pristineBundle) {
-  const executor = new cql.Executor(getLibrary());
+async function runReferralTriageCql(pristineBundle) {
+  // 🐛 FIX: getLibrary() and executor.exec() are both async — this function was
+  // previously calling neither with `await`, so the Executor was constructed with
+  // a pending Promise instead of the actual compiled Library (making every
+  // `library.expressions` lookup silently iterate over nothing), and `results`
+  // held a pending Promise instead of a Results object (so `results.patientResults`
+  // was undefined and Object.keys() on the Promise itself returned []). That is
+  // exactly the "Engine executed but produced no patient results" symptom: the
+  // patient loaded fine (that lookup is synchronous), but the CQL rules never
+  // actually ran against it.
+  const library = await getLibrary();
+  const executor = new cql.Executor(library);
   const patientSource = cqlfhir.PatientSource.FHIRv400();
 
   patientSource.loadBundles([pristineBundle]);
 
   const loadedPatient = patientSource.currentPatient();
   const loadedPatientId = loadedPatient ? loadedPatient.getId() : null;
+  console.log(`[CQL] Library loaded with ${Object.keys(library.expressions || {}).length} expression(s). Loaded patient id: ${loadedPatientId}`);
 
-  // ✅ FIX: Execute engine matching BEFORE resetting the data collection iterator
-  const results = executor.exec(patientSource);
-  patientSource.reset(); 
+  // ✅ Execute engine matching BEFORE resetting the data collection iterator
+  const results = await executor.exec(patientSource);
+  patientSource.reset();
 
-  const rawResultsContainer = results?.patientResults || results || {};
+  const rawResultsContainer = results?.patientResults || {};
   const availablePatientKeys = Object.keys(rawResultsContainer);
+  console.log(`[CQL] Execution complete. Patient result keys: [${availablePatientKeys.join(', ')}]`);
 
   return { loadedPatientId, availablePatientKeys, rawResultsContainer };
 }
@@ -165,12 +177,21 @@ async function addToReferralQueue(queueItem) {
 }
 
 async function fhirGet(url, accessToken) {
+  console.log(`[FHIR REQUEST] GET ${url}`);
   const response = await fetch(url, {
     method: 'GET',
     headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }
   });
   const body = await response.json();
+
+  // Log every response the FHIR server returns (status + a lightweight
+  // summary — the full body can be large, so log resourceType/entry count
+  // rather than dumping the whole bundle).
+  const entryCount = Array.isArray(body?.entry) ? body.entry.length : null;
+  console.log(`[FHIR RESPONSE] ${response.status} ${url} -> resourceType=${body?.resourceType}, entries=${entryCount}`);
+
   if (!response.ok) {
+    console.error(`[FHIR RESPONSE BODY] ${url}:`, JSON.stringify(body));
     throw new Error(`FHIR request failed (${url}): ${JSON.stringify(body)}`);
   }
   return body;
@@ -204,13 +225,16 @@ export default async function handler(req, res) {
     console.log(`--- CQL WORKFLOW: identifier=${identifier} ---`);
 
     const accessToken = await getAccessToken({ clientID, audienceUrl, privateKeyText });
+    console.log(`[AUTH] Access token acquired (cached until ~${new Date(tokenCache.expiresAt * 1000).toISOString()}).`);
 
     const patientBundle = await fhirGet(
       `${fhirUrl}/Patient?identifier=${encodeURIComponent(identifier)}`,
       accessToken
     );
     if (!patientBundle.entry || patientBundle.entry.length === 0) {
-      return res.status(404).json({ success: false, error: `No FHIR Patient found for identifier: ${identifier}` });
+      const notFoundPayload = { success: false, error: `No FHIR Patient found for identifier: ${identifier}` };
+      console.log(`[RESPONSE] 404`, JSON.stringify(notFoundPayload));
+      return res.status(404).json(notFoundPayload);
     }
     const fhirId = patientBundle.entry[0].resource.id;
 
@@ -225,15 +249,26 @@ export default async function handler(req, res) {
     const episodeBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
 
     const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
-    const { loadedPatientId, availablePatientKeys, rawResultsContainer } = runReferralTriageCql(pristineBundle);
+    const resourceTypeCounts = pristineBundle.entry.reduce((counts, e) => {
+      const type = e.resource.resourceType;
+      counts[type] = (counts[type] || 0) + 1;
+      return counts;
+    }, {});
+    console.log(`[BUNDLE] Merged bundle has ${pristineBundle.entry.length} entries:`, JSON.stringify(resourceTypeCounts));
+
+    // 🐛 FIX: this was called without `await` even though it's async — see the
+    // comment inside runReferralTriageCql for why that produced empty results.
+    const { loadedPatientId, availablePatientKeys, rawResultsContainer } = await runReferralTriageCql(pristineBundle);
 
     if (availablePatientKeys.length === 0) {
-      console.error(`CQL engine returned no patient results. Loaded patient id: ${loadedPatientId}`);
-      return res.status(422).json({
+      const noResultsPayload = {
         success: false,
         error: 'Engine executed but produced no patient results.',
         loadedPatientId
-      });
+      };
+      console.error(`CQL engine returned no patient results. Loaded patient id: ${loadedPatientId}`);
+      console.log(`[RESPONSE] 422`, JSON.stringify(noResultsPayload));
+      return res.status(422).json(noResultsPayload);
     }
 
     const normalizedFhirId = fhirId.toLowerCase();
@@ -243,6 +278,7 @@ export default async function handler(req, res) {
       ) || availablePatientKeys[0];
 
     const patientResults = rawResultsContainer[matchedKey];
+    console.log(`[CQL RESULTS] matchedKey=${matchedKey}:`, JSON.stringify(patientResults));
     const qualifiesForQueue = patientResults['Is Valid Referral Triage Process'] === true;
 
     let queueItem = null;
@@ -263,14 +299,18 @@ export default async function handler(req, res) {
       queuePersisted = await addToReferralQueue(queueItem);
     }
 
-    return res.status(200).json({
+    const responsePayload = {
       success: true,
       actionRequired: qualifiesForQueue,
       queueItem,
       queuePersisted
-    });
+    };
+    console.log(`[RESPONSE] 200`, JSON.stringify(responsePayload));
+    return res.status(200).json(responsePayload);
   } catch (error) {
     console.error('CQL Runtime Engine Error:', error);
-    return res.status(500).json({ success: false, error: `DEBUG: ${error.message}` });
+    const errorPayload = { success: false, error: `DEBUG: ${error.message}` };
+    console.log(`[RESPONSE] 500`, JSON.stringify(errorPayload));
+    return res.status(500).json(errorPayload);
   }
 }
