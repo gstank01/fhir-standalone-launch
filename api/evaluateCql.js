@@ -177,7 +177,7 @@ function traceReferralTriageEvaluation(patientResults) {
   const referralEncounters = patientResults['Referral Triage Encounters'] || [];
   const activeEpisodes = patientResults['Active Episodes of Care'] || [];
 
-  record(1, `Found ${referralEncounters.length} "Referral Triage Encounters" (Encounter.type matches the HospitalCodes/1234 code).`);
+  record(1, `Found ${referralEncounters.length} "Referral Triage Encounters" (Encounter.type matches the HospitalCodes/2611 code).`);
   if (referralEncounters.length === 0) {
     record(1, 'No matching encounters -> "Is Valid Referral Triage Process" cannot be true.');
   } else {
