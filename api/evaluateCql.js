@@ -159,6 +159,63 @@ async function getAccessToken({ clientID, audienceUrl, privateKeyText }) {
   return tokenCache.access_token;
 }
 
+// Walks the CQL engine's intermediate named-expression results (which are
+// already computed for us — every define in triage-logic.cql runs in
+// `context Patient`, so cql-execution returns all of them, not just the
+// final boolean) and logs/returns a human-readable trace of exactly why
+// "Is Valid Referral Triage Process" landed on true or false: how many
+// Referral Triage Encounters and Active Episodes of Care were found, and
+// whether any encounter's episodeOfCare reference actually matched one of
+// the active episodes.
+function traceReferralTriageEvaluation(patientResults) {
+  const trace = [];
+  const record = (step, message) => {
+    console.log(`[CQL STEP ${step}] ${message}`);
+    trace.push({ step, message });
+  };
+
+  const referralEncounters = patientResults['Referral Triage Encounters'] || [];
+  const activeEpisodes = patientResults['Active Episodes of Care'] || [];
+
+  record(1, `Found ${referralEncounters.length} "Referral Triage Encounters" (Encounter.type matches the HospitalCodes/1234 code).`);
+  if (referralEncounters.length === 0) {
+    record(1, 'No matching encounters -> "Is Valid Referral Triage Process" cannot be true.');
+  } else {
+    referralEncounters.forEach((enc, i) => {
+      const episodeRefs = (enc.episodeOfCare || []).map(eoc => eoc?.reference?.value).filter(Boolean);
+      record(1, `  Encounter #${i + 1} (id=${enc.id?.value}): episodeOfCare references = [${episodeRefs.join(', ') || 'none'}]`);
+    });
+  }
+
+  record(2, `Found ${activeEpisodes.length} "Active Episodes of Care" (EpisodeOfCare.status = 'active').`);
+  if (activeEpisodes.length === 0) {
+    record(2, 'No active episodes -> "Is Valid Referral Triage Process" cannot be true.');
+  } else {
+    activeEpisodes.forEach((ep, i) => {
+      record(2, `  Episode #${i + 1}: id=${ep.id?.value}, status=${ep.status?.value}`);
+    });
+  }
+
+  record(3, 'Checking every Referral Triage Encounter against every Active Episode of Care for a matching reference...');
+  let matchFound = false;
+  referralEncounters.forEach((enc, i) => {
+    const episodeRefs = (enc.episodeOfCare || []).map(eoc => eoc?.reference?.value).filter(Boolean);
+    activeEpisodes.forEach((ep, j) => {
+      const expectedRef = `EpisodeOfCare/${ep.id?.value}`;
+      const isMatch = episodeRefs.includes(expectedRef);
+      record(3, `  Encounter #${i + 1} vs Active Episode #${j + 1} (expected "${expectedRef}"): ${isMatch ? 'MATCH ✅' : 'no match'}`);
+      if (isMatch) matchFound = true;
+    });
+  });
+  if (referralEncounters.length === 0 || activeEpisodes.length === 0) {
+    record(3, '  (skipped — nothing to compare, see steps 1/2 above)');
+  }
+
+  record(4, `Final result -> "Is Valid Referral Triage Process" = ${patientResults['Is Valid Referral Triage Process']} (matchFound=${matchFound})`);
+
+  return trace;
+}
+
 function extractPatientDisplayName(patientResource) {
   const name = (patientResource.name || []).find(n => n.text || n.family || (n.given && n.given.length)) || {};
   if (name.text) return name.text;
@@ -298,6 +355,7 @@ export default async function handler(req, res) {
 
     const patientResults = rawResultsContainer[matchedKey];
     console.log(`[CQL RESULTS] matchedKey=${matchedKey}:`, JSON.stringify(patientResults));
+    const evaluationTrace = traceReferralTriageEvaluation(patientResults);
     const qualifiesForQueue = patientResults['Is Valid Referral Triage Process'] === true;
 
     let queueItem = null;
@@ -322,7 +380,8 @@ export default async function handler(req, res) {
       success: true,
       actionRequired: qualifiesForQueue,
       queueItem,
-      queuePersisted
+      queuePersisted,
+      evaluationTrace
     };
     console.log(`[RESPONSE] 200`, JSON.stringify(responsePayload));
     return res.status(200).json(responsePayload);
