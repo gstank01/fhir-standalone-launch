@@ -16,6 +16,7 @@
             <button id="launchBtn" class="primary-btn">GET Appointments</button>
             <button id="btn-referral-info" class="second-btn">GET Referral Info</button> 
             <button id="btn-cql-execute" class="second-btn">Execute CQL Logic</button>
+            <button id="btn-view-queue" class="second-btn">View Referral Queue</button>
         </div>
 
         <div id="worklistModal" class="worklist-box">
@@ -288,7 +289,37 @@
         </div>
     </div>
 </div>
- 
+
+<!-- STEP 8: REFERRAL QUEUE MODAL -->
+<div id="queueModal" class="modal-overlay">
+    <div class="modal" style="max-width: 850px; width: 90%; max-height: 90vh; overflow-y: auto;">
+        <h2 class="modal-header">Referral Queue</h2>
+        <p style="font-size: 14px; color: #555;">Patients the CQL engine has evaluated as matching "Is Valid Referral Triage Process":</p>
+
+        <div style="max-height: 350px; overflow-y: auto; margin: 15px 0; border: 1px solid #ddd; border-radius: 4px;">
+            <table class="param-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f4f4f4;">
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Patient Name</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">MRN / Identifier</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">DOB</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Status</th>
+                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Queued At</th>
+                    </tr>
+                </thead>
+                <tbody id="queueTableBody">
+                    <!-- Populated from /api/queue -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="modal-actions" style="margin-top: 20px;">
+            <button id="cancelQueueBtn" class="secondary">Close Window</button>
+            <button id="refreshQueueBtn" class="primary-btn">Refresh</button>
+        </div>
+    </div>
+</div>
+
     <!-- SCRIPT INCLUDES -->
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
@@ -298,6 +329,7 @@
     <script src="js/referrals-app.js"></script>
     <script src="js/referral-info-window.js"></script>
     <script src="js/cql-app.js"></script>
+    <script src="js/queue-app.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

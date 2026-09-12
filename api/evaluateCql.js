@@ -3,6 +3,7 @@ const cql = require('cql-execution');
 const cqlfhir = require('cql-exec-fhir');
 const fs = require('fs');
 const path = require('path');
+const { neon } = require('@neondatabase/serverless');
 
 // --- Global Token Cache Strategy ---
 let tokenCache = { access_token: null, expiresAt: 0 };
@@ -127,6 +128,42 @@ async function getAccessToken({ clientID, audienceUrl, privateKeyText }) {
   return tokenCache.access_token;
 }
 
+function extractPatientDisplayName(patientResource) {
+  const name = (patientResource.name || []).find(n => n.text || n.family || (n.given && n.given.length)) || {};
+  if (name.text) return name.text;
+  const parts = [...(name.given || []), name.family].filter(Boolean);
+  return parts.length ? parts.join(' ') : 'Unknown';
+}
+
+// Inserts (or refreshes) a row in the referral_queue table for a patient the
+// CQL engine has flagged. Failing to persist should never fail the overall
+// evaluation response — the caller still needs to see the CQL result.
+async function addToReferralQueue(queueItem) {
+  if (!process.env.DATABASE_URL) {
+    console.warn('DATABASE_URL not configured; skipping referral_queue persistence.');
+    return false;
+  }
+
+  try {
+    const sql = neon(process.env.DATABASE_URL);
+    await sql`
+      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details)
+      VALUES (${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob}, ${queueItem.status}, ${queueItem.details})
+      ON CONFLICT (patient_id) DO UPDATE SET
+        identifier = EXCLUDED.identifier,
+        name = EXCLUDED.name,
+        dob = EXCLUDED.dob,
+        status = EXCLUDED.status,
+        details = EXCLUDED.details,
+        updated_at = now()
+    `;
+    return true;
+  } catch (error) {
+    console.error('Neon DB Error while writing referral_queue:', error);
+    return false;
+  }
+}
+
 async function fhirGet(url, accessToken) {
   const response = await fetch(url, {
     method: 'GET',
@@ -208,18 +245,29 @@ export default async function handler(req, res) {
     const patientResults = rawResultsContainer[matchedKey];
     const qualifiesForQueue = patientResults['Is Valid Referral Triage Process'] === true;
 
+    let queueItem = null;
+    let queuePersisted = null; // null = n/a, true/false once we've attempted a write
+
+    if (qualifiesForQueue) {
+      const patientResource = patientBundle.entry[0].resource;
+      queueItem = {
+        id: `idx-${Date.now()}`,
+        patientId: fhirId,
+        identifier,
+        name: extractPatientDisplayName(patientResource),
+        dob: patientResource.birthDate || null,
+        timestamp: new Date().toISOString(),
+        status: 'Pending Action',
+        details: 'Referral criteria matched via local ELM JSON execution.'
+      };
+      queuePersisted = await addToReferralQueue(queueItem);
+    }
+
     return res.status(200).json({
       success: true,
       actionRequired: qualifiesForQueue,
-      queueItem: qualifiesForQueue
-        ? {
-            id: `idx-${Date.now()}`,
-            patientId: fhirId,
-            timestamp: new Date().toISOString(),
-            status: 'Pending Action',
-            details: 'Referral criteria matched via local ELM JSON execution.'
-          }
-        : null
+      queueItem,
+      queuePersisted
     });
   } catch (error) {
     console.error('CQL Runtime Engine Error:', error);

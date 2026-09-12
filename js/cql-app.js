@@ -142,6 +142,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             safeLog('SUCCESS: CQL evaluation completed successfully.');
             cqlResultOutput.textContent = JSON.stringify(evalData, null, 2);
+
+            if (evalData.actionRequired) {
+                if (evalData.queuePersisted) {
+                    safeLog(`SUCCESS: Patient ${identifier} added to the referral queue.`);
+                } else {
+                    safeLog(`<span style="color: orange;">WARNING: Patient ${identifier} matched the triage rule but could not be persisted to the referral queue (see server logs).</span>`);
+                }
+            } else {
+                safeLog(`Patient ${identifier} evaluated successfully. No triage action required.`);
+            }
+
             safeLog('--- CQL PIPELINE COMPLETE ---');
 
         } catch (error) {
