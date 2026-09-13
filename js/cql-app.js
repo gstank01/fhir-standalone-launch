@@ -187,6 +187,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (evalData.actionRequired) {
                 if (evalData.queuePersisted) {
                     safeLog(`SUCCESS: Patient ${identifier} added to the referral queue.`);
+                    // Refresh the on-page queue panel (js/queue-app.js) so the
+                    // new entry shows up without a manual reload.
+                    window.refreshReferralQueue?.();
                 } else {
                     safeLog(`<span style="color: orange;">WARNING: Patient ${identifier} matched the triage rule but could not be persisted to the referral queue (see server logs).</span>`);
                 }

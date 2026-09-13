@@ -1,7 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const btnViewQueue = document.getElementById('btn-view-queue');
-    const queueModal = document.getElementById('queueModal');
-    const cancelQueueBtn = document.getElementById('cancelQueueBtn');
     const refreshQueueBtn = document.getElementById('refreshQueueBtn');
     const queueTableBody = document.getElementById('queueTableBody');
 
@@ -13,20 +10,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    if (!btnViewQueue) return;
+    if (!queueTableBody) return;
 
-    btnViewQueue.addEventListener('click', async () => {
-        queueModal.classList.add('active');
-        safeLog('Opening referral queue...');
-        await loadQueue();
-    });
+    // Lives on the main page now (next to the logs and FHIR response
+    // output) instead of behind a separate modal/button, so it loads as
+    // soon as the page does.
+    loadQueue();
 
-    cancelQueueBtn.addEventListener('click', () => {
-        queueModal.classList.remove('active');
-        safeLog('Referral queue closed.');
-    });
+    refreshQueueBtn?.addEventListener('click', loadQueue);
 
-    refreshQueueBtn.addEventListener('click', loadQueue);
+    // Exposed so other modules (e.g. js/cql-app.js, after a successful
+    // evaluation) can refresh the panel without polling.
+    window.refreshReferralQueue = loadQueue;
 
     async function loadQueue() {
         queueTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:15px;">Loading referral queue...</td></tr>';
@@ -57,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 [item.name || 'Unknown', item.identifier || 'N/A', item.dob || 'N/A', item.rule_name || 'N/A', item.status || 'N/A', queuedAt].forEach(value => {
                     const cell = document.createElement('td');
-                    cell.style.padding = '10px';
+                    cell.style.padding = '8px 10px';
                     cell.style.borderBottom = '1px solid #ddd';
                     cell.textContent = value;
                     row.appendChild(cell);

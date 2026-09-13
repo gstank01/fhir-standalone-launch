@@ -16,7 +16,6 @@
             <button id="launchBtn" class="primary-btn">GET Appointments</button>
             <button id="btn-referral-info" class="second-btn">GET Referral Info</button> 
             <button id="btn-cql-execute" class="second-btn">Execute CQL Logic</button>
-            <button id="btn-view-queue" class="second-btn">View Referral Queue</button>
         </div>
 
         <div id="worklistModal" class="worklist-box">
@@ -45,9 +44,30 @@
         <div class="box">
             <h2>Live Process Logs</h2>
             <div id="logs">App ready. Click trigger to start...</div>
-            
+
             <h2>FHIR Response Data</h2>
             <pre id="fhirData">No data fetched yet.</pre>
+
+            <h2>Referral Queue
+                <button id="refreshQueueBtn" class="secondary" style="float: right; padding: 4px 10px; font-size: 12px;">Refresh</button>
+            </h2>
+            <div id="queueContainer" style="max-height: 250px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;">
+                <table class="param-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f4f4f4;">
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Patient Name</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">MRN / Identifier</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">DOB</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Matched Rule</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Status</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Queued At</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queueTableBody">
+                        <!-- Populated from /api/queue -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -293,37 +313,6 @@
 
         <div class="modal-actions" style="margin-top: 20px;">
             <button id="cancelCqlBtn" class="secondary">Close Window</button>
-        </div>
-    </div>
-</div>
-
-<!-- STEP 8: REFERRAL QUEUE MODAL -->
-<div id="queueModal" class="modal-overlay">
-    <div class="modal" style="max-width: 850px; width: 90%; max-height: 90vh; overflow-y: auto;">
-        <h2 class="modal-header">Referral Queue</h2>
-        <p style="font-size: 14px; color: #555;">Patients the CQL engine has evaluated as matching "Is Valid Referral Triage Process":</p>
-
-        <div style="max-height: 350px; overflow-y: auto; margin: 15px 0; border: 1px solid #ddd; border-radius: 4px;">
-            <table class="param-table" style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr style="background: #f4f4f4;">
-                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Patient Name</th>
-                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">MRN / Identifier</th>
-                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">DOB</th>
-                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Matched Rule</th>
-                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Status</th>
-                        <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Queued At</th>
-                    </tr>
-                </thead>
-                <tbody id="queueTableBody">
-                    <!-- Populated from /api/queue -->
-                </tbody>
-            </table>
-        </div>
-
-        <div class="modal-actions" style="margin-top: 20px;">
-            <button id="cancelQueueBtn" class="secondary">Close Window</button>
-            <button id="refreshQueueBtn" class="primary-btn">Refresh</button>
         </div>
     </div>
 </div>
