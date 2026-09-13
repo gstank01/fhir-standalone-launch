@@ -272,6 +272,27 @@ function extractPatientDisplayName(patientResource) {
   return parts.length ? parts.join(' ') : 'Unknown';
 }
 
+const EPISODE_NAME_EXTENSION_URL = 'http://open.epic.com/FHIR/StructureDefinition/extension/episode-name';
+
+// Pulls the human-readable episode name (e.g. "RMH 62 Day Cancer Suspected")
+// off the active EpisodeOfCare's Epic extension, straight from the raw
+// encounter bundle (not the CQL-wrapped results) since that's the simplest
+// place to read a plain extension value. Joins multiple if more than one
+// active episode carries the extension; returns null if none do.
+function extractEpisodeName(encounterBundle) {
+  if (!encounterBundle || !encounterBundle.entry) return null;
+
+  const names = encounterBundle.entry
+    .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare' && e.resource.status === 'active')
+    .flatMap(e => (e.resource.extension || [])
+      .filter(ext => ext.url === EPISODE_NAME_EXTENSION_URL)
+      .map(ext => ext.valueString)
+    )
+    .filter(Boolean);
+
+  return names.length ? names.join('; ') : null;
+}
+
 // Inserts (or refreshes) a row in the referral_queue table for a patient the
 // CQL engine has flagged. Failing to persist should never fail the overall
 // evaluation response — the caller still needs to see the CQL result.
@@ -284,8 +305,11 @@ async function addToReferralQueue(queueItem) {
   try {
     const sql = neon(process.env.DATABASE_URL);
     await sql`
-      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details, rule_name)
-      VALUES (${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob}, ${queueItem.status}, ${queueItem.details}, ${queueItem.ruleName})
+      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details, rule_name, episode_name)
+      VALUES (
+        ${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob},
+        ${queueItem.status}, ${queueItem.details}, ${queueItem.ruleName}, ${queueItem.episodeName}
+      )
       ON CONFLICT (patient_id) DO UPDATE SET
         identifier = EXCLUDED.identifier,
         name = EXCLUDED.name,
@@ -293,6 +317,7 @@ async function addToReferralQueue(queueItem) {
         status = EXCLUDED.status,
         details = EXCLUDED.details,
         rule_name = EXCLUDED.rule_name,
+        episode_name = EXCLUDED.episode_name,
         updated_at = now()
     `;
     return true;
@@ -436,7 +461,8 @@ export default async function handler(req, res) {
         timestamp: new Date().toISOString(),
         status: 'Pending Action',
         ruleName: rule.name,
-        details: `Matched rule "${rule.name}" (${rule.result_expression}).`
+        details: `Matched rule "${rule.name}" (${rule.result_expression}).`,
+        episodeName: extractEpisodeName(encounterBundle)
       };
       queuePersisted = await addToReferralQueue(queueItem);
     }
