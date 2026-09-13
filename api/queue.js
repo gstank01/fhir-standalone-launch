@@ -19,7 +19,11 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, items });
         } catch (error) {
             console.error("Neon DB Error:", error);
-            return res.status(500).json({ error: 'Internal Server Error while fetching referral queue.' });
+            // Include the real DB error (e.g. "column ... does not exist" when
+            // a migration hasn't been run yet) instead of a generic message —
+            // this is a dev tool, not a public API, so the detail is worth
+            // more than hiding it.
+            return res.status(500).json({ success: false, error: `Internal Server Error while fetching referral queue: ${error.message}` });
         }
     }
 
@@ -48,7 +52,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, deletedCount: deleted.length });
         } catch (error) {
             console.error("Neon DB Error while clearing referral_queue:", error);
-            return res.status(500).json({ success: false, error: 'Internal Server Error while clearing referral queue.' });
+            return res.status(500).json({ success: false, error: `Internal Server Error while clearing referral queue: ${error.message}` });
         }
     }
 
