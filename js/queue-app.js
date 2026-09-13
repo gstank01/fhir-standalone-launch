@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     const refreshQueueBtn = document.getElementById('refreshQueueBtn');
+    const clearQueueBtn = document.getElementById('clearQueueBtn');
     const queueTableBody = document.getElementById('queueTableBody');
 
     function safeLog(message) {
@@ -18,6 +19,35 @@ document.addEventListener('DOMContentLoaded', () => {
     loadQueue();
 
     refreshQueueBtn?.addEventListener('click', loadQueue);
+
+    clearQueueBtn?.addEventListener('click', async () => {
+        if (!confirm('Clear the entire referral queue? This cannot be undone.')) {
+            return;
+        }
+
+        clearQueueBtn.disabled = true;
+        safeLog('Clearing referral queue...');
+
+        try {
+            const response = await fetch('/api/queue', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirm: true })
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Failed to clear referral queue.');
+            }
+
+            safeLog(`SUCCESS: Cleared ${data.deletedCount} entr${data.deletedCount === 1 ? 'y' : 'ies'} from the referral queue.`);
+            await loadQueue();
+        } catch (error) {
+            safeLog(`<span style="color: red;">ERROR: Failed to clear referral queue: ${escapeHtml(error.message)}</span>`);
+        } finally {
+            clearQueueBtn.disabled = false;
+        }
+    });
 
     // Exposed so other modules (e.g. js/cql-app.js, after a successful
     // evaluation) can refresh the panel without polling.
