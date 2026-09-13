@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const refreshQueueBtn = document.getElementById('refreshQueueBtn');
     const clearQueueBtn = document.getElementById('clearQueueBtn');
     const queueTableBody = document.getElementById('queueTableBody');
+    const fhirDataEl = document.getElementById('fhirData');
 
     function safeLog(message) {
         if (typeof log === 'function') {
@@ -54,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.refreshReferralQueue = loadQueue;
 
     async function loadQueue() {
-        queueTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:15px;">Loading referral queue...</td></tr>';
+        queueTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:15px;">Loading referral queue...</td></tr>';
         safeLog('Fetching referral queue via /api/queue...');
 
         try {
@@ -68,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const items = data.items;
             if (!items || items.length === 0) {
                 safeLog('Referral queue is empty.');
-                queueTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:15px;">No patients currently in the referral queue.</td></tr>';
+                queueTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:15px;">No patients currently in the referral queue.</td></tr>';
                 return;
             }
 
@@ -88,6 +89,35 @@ document.addEventListener('DOMContentLoaded', () => {
                     row.appendChild(cell);
                 });
 
+                // Bundle cell: the Patient/Encounter bundles that caused this
+                // patient to be queued, stored on the row by evaluateCql.js.
+                // "View" loads them into the main page's FHIR Response Data
+                // panel — the same one the CQL evaluation itself uses.
+                const bundleCell = document.createElement('td');
+                bundleCell.style.padding = '8px 10px';
+                bundleCell.style.borderBottom = '1px solid #ddd';
+
+                if (item.patient_bundle_json || item.encounter_bundle_json) {
+                    const viewBtn = document.createElement('button');
+                    viewBtn.className = 'secondary';
+                    viewBtn.style.padding = '3px 8px';
+                    viewBtn.style.fontSize = '11px';
+                    viewBtn.textContent = 'View';
+                    viewBtn.addEventListener('click', () => {
+                        if (!fhirDataEl) return;
+                        fhirDataEl.textContent = JSON.stringify(
+                            { patientBundle: item.patient_bundle_json, encounterBundle: item.encounter_bundle_json },
+                            null,
+                            2
+                        );
+                        safeLog(`Loaded stored bundle for ${item.name || item.identifier} (queue row ${item.id}) into FHIR Response Data.`);
+                    });
+                    bundleCell.appendChild(viewBtn);
+                } else {
+                    bundleCell.textContent = 'N/A';
+                }
+                row.appendChild(bundleCell);
+
                 tableFragment.appendChild(row);
             });
 
@@ -96,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             safeLog(`<span style="color: red;">ERROR: Failed to load referral queue: ${escapeHtml(error.message)}</span>`);
-            queueTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:15px; color: red;">Error: ${escapeHtml(error.message)}</td></tr>`;
+            queueTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:15px; color: red;">Error: ${escapeHtml(error.message)}</td></tr>`;
         }
     }
 

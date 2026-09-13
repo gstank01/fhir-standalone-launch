@@ -284,8 +284,15 @@ async function addToReferralQueue(queueItem) {
   try {
     const sql = neon(process.env.DATABASE_URL);
     await sql`
-      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details, rule_name)
-      VALUES (${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob}, ${queueItem.status}, ${queueItem.details}, ${queueItem.ruleName})
+      INSERT INTO referral_queue (
+        patient_id, identifier, name, dob, status, details, rule_name,
+        patient_bundle_json, encounter_bundle_json
+      )
+      VALUES (
+        ${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob},
+        ${queueItem.status}, ${queueItem.details}, ${queueItem.ruleName},
+        ${JSON.stringify(queueItem.patientBundle)}::jsonb, ${JSON.stringify(queueItem.encounterBundle)}::jsonb
+      )
       ON CONFLICT (patient_id) DO UPDATE SET
         identifier = EXCLUDED.identifier,
         name = EXCLUDED.name,
@@ -293,6 +300,8 @@ async function addToReferralQueue(queueItem) {
         status = EXCLUDED.status,
         details = EXCLUDED.details,
         rule_name = EXCLUDED.rule_name,
+        patient_bundle_json = EXCLUDED.patient_bundle_json,
+        encounter_bundle_json = EXCLUDED.encounter_bundle_json,
         updated_at = now()
     `;
     return true;
@@ -436,7 +445,9 @@ export default async function handler(req, res) {
         timestamp: new Date().toISOString(),
         status: 'Pending Action',
         ruleName: rule.name,
-        details: `Matched rule "${rule.name}" (${rule.result_expression}).`
+        details: `Matched rule "${rule.name}" (${rule.result_expression}).`,
+        patientBundle,
+        encounterBundle
       };
       queuePersisted = await addToReferralQueue(queueItem);
     }
