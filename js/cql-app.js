@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cqlResultContainer = document.getElementById('cqlResultContainer');
     const cqlResultOutput = document.getElementById('cqlResultOutput');
     const cqlRuleSelect = document.getElementById('cqlRuleSelect');
+    const fhirDataEl = document.getElementById('fhirData');
 
     // Safe fallback check to ensure missing log() utilities do not crash the module execution thread
     function safeLog(message) {
@@ -173,6 +174,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             }
 
+            // Show the raw FHIR bundle(s) the server fetched, in the same
+            // "FHIR Response Data" panel the GET Appointments flow uses —
+            // populated whenever the response carries them, success or not.
+            renderFhirData(evalData);
+
             if (!evalResponse.ok) {
                 // Show the full payload (includes our temporary debug fields)
                 // in the result panel, not just the error string, so the
@@ -218,5 +224,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function escapeHtml(str) {
         return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Renders the raw Patient/Encounter bundles api/evaluateCql.js fetched
+    // from the FHIR server into the main page's "FHIR Response Data" panel.
+    function renderFhirData(evalData) {
+        if (!fhirDataEl) return;
+
+        if (!evalData || (!evalData.patientBundle && !evalData.encounterBundle)) {
+            fhirDataEl.textContent = 'No FHIR bundle returned for this request.';
+            return;
+        }
+
+        fhirDataEl.textContent = JSON.stringify(
+            { patientBundle: evalData.patientBundle, encounterBundle: evalData.encounterBundle },
+            null,
+            2
+        );
     }
 });

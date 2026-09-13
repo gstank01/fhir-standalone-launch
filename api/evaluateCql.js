@@ -358,8 +358,12 @@ export default async function handler(req, res) {
       accessToken
     );
     if (!patientBundle.entry || patientBundle.entry.length === 0) {
-      const notFoundPayload = { success: false, error: `No FHIR Patient found for identifier: ${identifier}` };
-      console.log(`[RESPONSE] 404`, JSON.stringify(notFoundPayload));
+      const notFoundPayload = {
+        success: false,
+        error: `No FHIR Patient found for identifier: ${identifier}`,
+        patientBundle
+      };
+      console.log(`[RESPONSE] 404`, JSON.stringify({ ...notFoundPayload, patientBundle: '(omitted from log — see [FHIR RESPONSE] above)' }));
       return res.status(404).json(notFoundPayload);
     }
     const fhirId = patientBundle.entry[0].resource.id;
@@ -390,10 +394,12 @@ export default async function handler(req, res) {
       const noResultsPayload = {
         success: false,
         error: 'Engine executed but produced no patient results.',
-        loadedPatientId
+        loadedPatientId,
+        patientBundle,
+        encounterBundle
       };
       console.error(`CQL engine returned no patient results. Loaded patient id: ${loadedPatientId}`);
-      console.log(`[RESPONSE] 422`, JSON.stringify(noResultsPayload));
+      console.log(`[RESPONSE] 422`, JSON.stringify({ ...noResultsPayload, patientBundle: '(omitted)', encounterBundle: '(omitted — see [FHIR RESPONSE]/[BUNDLE] above)' }));
       return res.status(422).json(noResultsPayload);
     }
 
@@ -441,9 +447,14 @@ export default async function handler(req, res) {
       actionRequired: qualifiesForQueue,
       queueItem,
       queuePersisted,
-      evaluationTrace
+      evaluationTrace,
+      // The raw FHIR bundles as returned by the server (before de-duping/
+      // merging for the CQL engine) — surfaced so the frontend can show
+      // exactly what came back, e.g. in the FHIR Response Data panel.
+      patientBundle,
+      encounterBundle
     };
-    console.log(`[RESPONSE] 200`, JSON.stringify(responsePayload));
+    console.log(`[RESPONSE] 200`, JSON.stringify({ ...responsePayload, patientBundle: '(omitted)', encounterBundle: '(omitted — see [FHIR RESPONSE]/[BUNDLE] above)' }));
     return res.status(200).json(responsePayload);
   } catch (error) {
     console.error('CQL Runtime Engine Error:', error);
