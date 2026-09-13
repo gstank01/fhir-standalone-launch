@@ -1,99 +1,71 @@
 const crypto = require('crypto');
-const { buildPristineBundle, runReferralTriageCql } = require('./lib/cqlEngine');
 
-// Global memory registry to track authorization instances across function lifecycles
-let authorizationCache = { token: null, invalidationTimestamp: 0 };
+// --- Global Token Cache Strategy (mirrors evaluateCql.js) ---
+let tokenCache = { access_token: null, expiresAt: 0 };
 
-/**
- * Base64Url encoding mechanism to meet JWT cryptographic requirements
- */
 const base64UrlEncode = input =>
   Buffer.from(input).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 
-/**
- * Securely signs and retrieves an OAuth access token from the Identity Provider
- */
-async function getAccessToken({ clientID, audienceUrl, privateKeyText, tokenEndpointUrl }) {
-  const currentEpochTime = Math.floor(Date.now() / 1000);
+async function getAccessToken({ clientID, audienceUrl, privateKeyText }) {
+  const now = Math.floor(Date.now() / 1000);
 
-  // Return token directly from memory cache if within valid parameters (with a 15s expiration safety margin)
-  if (authorizationCache.token && authorizationCache.invalidationTimestamp > currentEpochTime + 15) {
-    return authorizationCache.token;
+  // ✅ Retrieve valid cached token (configured with a 15-second expiration margin)
+  if (tokenCache.access_token && tokenCache.expiresAt > now + 15) {
+    return tokenCache.access_token;
   }
 
-  const jwtHeader = { alg: 'RS512', typ: 'JWT', kid: process.env.FHIR_KEY_ID || 'myapp-key-3' };
-  const jwtPayload = {
+  const header = { alg: 'RS512', typ: 'JWT', kid: process.env.KEY_ID || 'myapp-key-3' };
+  const payload = {
     iss: clientID,
     sub: clientID,
     aud: audienceUrl,
-    exp: currentEpochTime + 300,
+    exp: now + 300,
     jti: crypto.randomUUID().toUpperCase()
   };
 
-  const encodedHeader = base64UrlEncode(JSON.stringify(jwtHeader));
-  const encodedPayload = base64UrlEncode(JSON.stringify(jwtPayload));
-  const signatureSigningInput = `${encodedHeader}.${encodedPayload}`;
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-  const signerInstance = crypto.createSign('RSA-SHA512');
-  signerInstance.update(signatureSigningInput);
-  signerInstance.end();
-  
-  const cryptographicSignature = signerInstance.sign(privateKeyText, 'base64')
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-    
-  const clientAssertionString = `${signatureSigningInput}.${cryptographicSignature}`;
+  const sign = crypto.createSign('RSA-SHA512');
+  sign.update(signingInput);
+  sign.end();
+  const signature = sign.sign(privateKeyText, 'base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const clientAssertion = `${signingInput}.${signature}`;
 
   const tokenRequestBody = new URLSearchParams({
     grant_type: 'client_credentials',
     client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-    client_assertion: clientAssertionString
+    client_assertion: clientAssertion
   });
 
-  // FIX: Directed targeted query request context to tokenEndpointUrl rather than audienceUrl identifier
-  const tokenResponse = await fetch(tokenEndpointUrl, {
+  const tokenResponse = await fetch(audienceUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: tokenRequestBody.toString()
   });
 
-  const responsePayload = await tokenResponse.json();
-  if (!tokenResponse.ok || !responsePayload.access_token) {
-    throw new Error(`Token exchange failed: ${JSON.stringify(responsePayload)}`);
+  const tokenData = await tokenResponse.json();
+  if (!tokenResponse.ok || !tokenData.access_token) {
+    throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
   }
 
-  authorizationCache = {
-    token: responsePayload.access_token,
-    invalidationTimestamp: currentEpochTime + (responsePayload.expires_in || 300)
+  tokenCache = {
+    access_token: tokenData.access_token,
+    expiresAt: now + (tokenData.expires_in || 300)
   };
 
-  return authorizationCache.token;
+  return tokenCache.access_token;
 }
 
 /**
- * Standard utility wrapper for executing authenticated FHIR API requests
- */
-async function fhirGet(url, accessToken) {
-  const networkResponse = await fetch(url, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }
-  });
-  
-  const standardResponseBody = await networkResponse.json();
-  if (!networkResponse.ok) {
-    throw new Error(`FHIR request failed (${url}): ${JSON.stringify(standardResponseBody)}`);
-  }
-  return standardResponseBody;
-}
-
-/**
- * Primary Serverless Route Handler Export Engine
+ * Issues a backend-signed OAuth access token plus the configured FHIR base URL
+ * so the browser can perform the Patient/Encounter lookups itself, without ever
+ * seeing the private key. Used by the "GET Referral Info" flow (referrals-app.js).
  */
 export default async function handler(req, res) {
-  // CORS Lock configurations configured via systemic environmental infrastructure checks
-  const restrictedProductionOrigin = process.env.ALLOWED_ORIGIN || '*';
-  res.setHeader('Access-Control-Allow-Origin', restrictedProductionOrigin);
+  const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -108,7 +80,6 @@ export default async function handler(req, res) {
 
     const clientID = process.env.CLIENTID;
     const audienceUrl = process.env.AUDIENCEURL;
-    const tokenEndpointUrl = process.env.OAUTH_TOKEN_URL || audienceUrl; // Fallback handling if intentionally shared
     let privateKeyText = process.env.BACKEND_APP_KEY;
     const fhirUrl = process.env.FHIRURL;
 
@@ -117,65 +88,17 @@ export default async function handler(req, res) {
     }
     privateKeyText = privateKeyText.replace(/\\n/g, '\n');
 
-    console.log(`--- CQL WORKFLOW: identifier=${identifier} ---`);
+    console.log(`--- GET PATIENT TOKEN: identifier=${identifier} ---`);
 
-    // --- Step 1: Securely fetch or retrieve a cached OAuth Access Token ---
-    const accessToken = await getAccessToken({ clientID, audienceUrl, privateKeyText, tokenEndpointUrl });
-
-    // --- Step 2: Query for targeted patient context via identifier token ---
-    const patientBundle = await fhirGet(
-      `${fhirUrl}/Patient?identifier=${encodeURIComponent(identifier)}`,
-      accessToken
-    );
-    if (!patientBundle.entry || patientBundle.entry.length === 0) {
-      return res.status(404).json({ success: false, error: `No FHIR Patient found for identifier: ${identifier}` });
-    }
-    const fhirId = patientBundle.entry[0].resource.id;
-
-    // --- Step 3: Run isolated patient asset metrics queries in parallel ---
-    // FIX: Updated resource filtering syntax from patient= to subject= to strictly comply with FHIR R4 specifications
-    const [encounterBundle, episodeBundle] = await Promise.all([
-      fhirGet(`${fhirUrl}/Encounter?subject=${fhirId}&_include=Encounter:patient`, accessToken),
-      fhirGet(`${fhirUrl}/EpisodeOfCare?patient=${fhirId}`, accessToken)
-    ]);
-
-    // --- Step 4: Aggregate collected payloads and execute clinical logic parsing ---
-    const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
-    const { loadedPatientId, availablePatientKeys, rawResultsContainer } = runReferralTriageCql(pristineBundle);
-
-    if (availablePatientKeys.length === 0) {
-      console.error(`CQL engine returned no patient results. Loaded patient id: ${loadedPatientId}`);
-      return res.status(422).json({
-        success: false,
-        error: 'Engine executed but produced no patient results.',
-        loadedPatientId
-      });
-    }
-
-    const normalizedFhirId = fhirId.toLowerCase();
-    const matchedKey =
-      availablePatientKeys.find(
-        k => k.toLowerCase() === normalizedFhirId || k.toLowerCase().endsWith(`/${normalizedFhirId}`)
-      ) || availablePatientKeys[0];
-
-    const patientResults = rawResultsContainer[matchedKey];
-    const qualifiesForQueue = patientResults['Is Valid Referral Triage Process'] === true;
+    const accessToken = await getAccessToken({ clientID, audienceUrl, privateKeyText });
 
     return res.status(200).json({
       success: true,
-      actionRequired: qualifiesForQueue,
-      queueItem: qualifiesForQueue
-        ? {
-            id: `idx-${Date.now()}`,
-            patientId: fhirId,
-            timestamp: new Date().toISOString(),
-            status: 'Pending Action',
-            details: 'Referral criteria matched via local ELM JSON execution.'
-          }
-        : null
+      token: accessToken,
+      fhirUrl
     });
   } catch (error) {
-    console.error('CQL Runtime Engine Error:', error);
-    return res.status(500).json({ success: false, error: 'Internal error evaluating referral triage logic.' });
+    console.error('getPatient Token Error:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 }

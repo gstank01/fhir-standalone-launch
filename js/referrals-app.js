@@ -50,31 +50,31 @@ function initReferralUI() {
     });
 }
 
-async function sendToCqlGatekeeper(patientBundle, encounterBundle, targetPatientId) {
+async function sendToCqlGatekeeper(identifier) {
+    // NOTE: api/evaluateCql.js does its own server-side FHIR fetch (auth +
+    // Patient/Encounter lookup) keyed off `identifier` — it does not accept
+    // pre-fetched bundles. Sending {patientId, patientBundle, encounterBundle}
+    // here (the old shape) always 400'd with "Missing identifier.", silently,
+    // since this call's errors are only logged, not surfaced to the user.
     try {
-        console.log("Sending native bundles to CQL Gatekeeper...");
+        console.log(`Sending identifier ${identifier} to CQL Gatekeeper...`);
 
         const response = await fetch('/api/evaluateCql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                patientId: targetPatientId,
-                patientBundle: patientBundle,       // Send exactly as received from Step C
-                encounterBundle: encounterBundle    // Send exactly as received from Step E
-            })
+            body: JSON.stringify({ identifier })
         });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Server returned HTTP ${response.status}: ${errorText}`);
-        }
 
         const data = await response.json();
 
+        if (!response.ok) {
+            throw new Error(data.error || `Server returned HTTP ${response.status}`);
+        }
+
         if (data.success && data.actionRequired) {
-            console.log(`Routing patient ${targetPatientId} to Action Queue.`, data.queueItem);
+            console.log(`Routing patient ${identifier} to Action Queue.`, data.queueItem);
         } else {
-            console.log(`Patient ${targetPatientId} evaluated successfully. No triage action required.`);
+            console.log(`Patient ${identifier} evaluated successfully. No triage action required.`);
         }
 
     } catch (error) {
@@ -113,7 +113,7 @@ async function executeReferralWorkflow(identifier) {
         log("SUCCESS: Access Token and FHIR URL acquired from Vercel.");
 
         // Step C: Patient Lookup using the Vercel FHIRURL variable
-        const patientSearchUrl = `${fhirUrl}/Patient?identifier=${identifier}`;
+        const patientSearchUrl = `${fhirUrl}/Patient?identifier=${encodeURIComponent(identifier)}`;
         log(`Step C: Fetching Patient -> ${patientSearchUrl}`);
 
         const patientResponse = await fetch(patientSearchUrl, {
@@ -137,7 +137,11 @@ async function executeReferralWorkflow(identifier) {
             log(`Step D: Extracted logical Patient FHIR ID: ${fhirId}`);
 
             // Step E: Construct the Encounter URL using the same fhirUrl and token
-            const encounterUrl = `${fhirUrl}/Encounter?patient=${fhirId}&_include=Encounter:EpisodeOfCare`;
+            // 🐛 FIX: 'patient=' and 'Encounter:EpisodeOfCare' both silently returned
+            // nothing on this FHIR server — see api/evaluateCql.js, which needed the
+            // exact same fix ('subject=' + lowercase 'episode-of-care') to get any
+            // encounters or episodes back at all.
+            const encounterUrl = `${fhirUrl}/Encounter?subject=${fhirId}&_include=Encounter:episode-of-care`;
             log(`Step E: Fetching Encounters -> ${encounterUrl}`);
 
             const encounterResponse = await fetch(encounterUrl, {
@@ -155,8 +159,8 @@ async function executeReferralWorkflow(identifier) {
 
             log("SUCCESS: Encounter Bundle Received.");
 
-            log("Sending bundle to CQL Gatekeeper for evaluation...");
-            await sendToCqlGatekeeper(patientBundle, encounterBundle, fhirId);
+            log("Sending identifier to CQL Gatekeeper for evaluation...");
+            await sendToCqlGatekeeper(identifier);
 
             log("Opening Encounter Record in JSON inspector window...");
 

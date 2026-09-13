@@ -44,9 +44,32 @@
         <div class="box">
             <h2>Live Process Logs</h2>
             <div id="logs">App ready. Click trigger to start...</div>
-            
+
             <h2>FHIR Response Data</h2>
             <pre id="fhirData">No data fetched yet.</pre>
+
+            <h2>Referral Queue
+                <button id="clearQueueBtn" class="secondary" style="float: right; padding: 4px 10px; font-size: 12px; margin-left: 6px; background: #c4433b;">Clear Queue</button>
+                <button id="refreshQueueBtn" class="secondary" style="float: right; padding: 4px 10px; font-size: 12px;">Refresh</button>
+            </h2>
+            <div id="queueContainer" style="max-height: 250px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;">
+                <table class="param-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f4f4f4;">
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Patient Name</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">MRN / Identifier</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">DOB</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Matched Rule</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd; min-width: 240px;">Episode Name</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Status</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Queued At</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queueTableBody">
+                        <!-- Populated from /api/queue -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -218,7 +241,7 @@
         
         <!-- Banner and Patient Details -->
         <div class="header-banner">
-            <h2> Referral & Encounter Inspector</h2>
+            <h2 id="dynamic-title">Referral &amp; Encounter Inspector</h2>
             <div class="patient-info-grid">
                 <div><strong>Patient Name:</strong> <span id="ui-patient-name">Loading...</span></div>
                 <div><strong>Gender:</strong> <span id="ui-patient-gender">Loading...</span></div>
@@ -261,7 +284,14 @@
     <div class="modal" style="max-width: 850px; width: 90%; max-height: 90vh; overflow-y: auto;">
         <h2 class="modal-header">CQL Logic Evaluation Worklist</h2>
         <p style="font-size: 14px; color: #555;">Select a patient from the prepopulated table below to fire the FHIR query and evaluate CQL rules:</p>
-        
+
+        <div class="worklist-selector-group" style="margin-bottom: 12px;">
+            <label for="cqlRuleSelect">CQL Rule to evaluate:</label>
+            <select id="cqlRuleSelect" class="worklist-dropdown">
+                <!-- Populated from /api/rules -->
+            </select>
+        </div>
+
         <div style="max-height: 250px; overflow-y: auto; margin: 15px 0; border: 1px solid #ddd; border-radius: 4px;">
             <table class="param-table" style="width: 100%; border-collapse: collapse;">
                 <thead>
@@ -288,7 +318,7 @@
         </div>
     </div>
 </div>
- 
+
     <!-- SCRIPT INCLUDES -->
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
@@ -298,6 +328,7 @@
     <script src="js/referrals-app.js"></script>
     <script src="js/referral-info-window.js"></script>
     <script src="js/cql-app.js"></script>
+    <script src="js/queue-app.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
