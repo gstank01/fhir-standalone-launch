@@ -149,9 +149,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let evalData;
+        const ruleName = cqlRuleSelect && cqlRuleSelect.value ? cqlRuleSelect.value : undefined;
         try {
-            const ruleName = cqlRuleSelect && cqlRuleSelect.value ? cqlRuleSelect.value : undefined;
-
             cqlResultContainer.style.display = 'block';
             cqlResultOutput.textContent = `Evaluating rule "${ruleName || '(default)'}" for identifier: ${identifier}...`;
             safeLog('--- STARTING CQL EVALUATION WORKFLOW ---');
@@ -205,6 +204,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             safeLog('--- CQL PIPELINE COMPLETE ---');
 
+            showActionDetail(`Evaluate — ${identifier}`, buildEvaluateDetailHtml(identifier, ruleName, evalData));
+
         } catch (error) {
             safeLog(`<span style="color: red;">ERROR: CQL Workflow Failed: ${escapeHtml(error.message)}</span>`);
             // Only overwrite with a plain message if we haven't already shown
@@ -213,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!evalData) {
                 cqlResultOutput.textContent = `Execution Error: ${error.message}`;
             }
+            showActionDetail(`Evaluate — ${identifier} (failed)`, buildEvaluateDetailHtml(identifier, ruleName, evalData, error));
         } finally {
             // Restore interactive capability back to the user element
             if (triggeringButton) {
@@ -224,6 +226,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function escapeHtml(str) {
         return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Builds the plain-language "what just happened" walkthrough for the
+    // Evaluate action's pop-up — same data already in evalData/error, just
+    // narrated instead of left as a raw JSON dump, for a live demo audience.
+    function buildEvaluateDetailHtml(identifier, ruleName, evalData, error) {
+        const ruleLabel = ruleName || '(default rule)';
+        const parts = [];
+
+        parts.push(`<p>Here's exactly what happened when <strong>Evaluate</strong> was clicked for identifier <code>${escapeHtml(identifier)}</code>:</p>`);
+        parts.push('<ol style="padding-left: 20px;">');
+        parts.push(`<li>Sent <code>{ identifier: "${escapeHtml(identifier)}", ruleName: "${escapeHtml(ruleLabel)}" }</code> to <code>/api/evaluateCql</code>.</li>`);
+
+        if (!evalData) {
+            // Never got a parseable response back at all.
+            parts.push(`<li style="color:#c4433b;">Request failed before the server could respond: ${escapeHtml(error?.message || 'unknown error')}.</li>`);
+            parts.push('</ol>');
+            return parts.join('');
+        }
+
+        const patientCount = evalData.patientBundle?.entry?.length ?? 0;
+        parts.push(`<li>Server authenticated with the FHIR server and searched for the Patient record — <strong>${patientCount} found</strong>.</li>`);
+
+        if (!evalData.success && !evalData.encounterBundle) {
+            // 404-style: no patient found, pipeline stopped there.
+            parts.push(`<li style="color:#c4433b;">${escapeHtml(evalData.error || 'No matching patient — evaluation stopped here.')}</li>`);
+            parts.push('</ol>');
+            return parts.join('');
+        }
+
+        const encounterCount = evalData.encounterBundle?.entry?.length ?? 0;
+        parts.push(`<li>Server searched for Encounter + EpisodeOfCare records for that patient — <strong>${encounterCount} resource(s) found</strong>.</li>`);
+
+        if (!evalData.success) {
+            parts.push(`<li style="color:#c4433b;">${escapeHtml(evalData.error || 'Evaluation failed on the server — see the raw response below.')}</li>`);
+            parts.push('</ol>');
+            parts.push(rawJsonDetails(evalData));
+            return parts.join('');
+        }
+
+        parts.push(`<li>Server loaded the compiled rule <strong>"${escapeHtml(evalData.ruleName || ruleLabel)}"</strong> from the <code>cql_rules</code> table and ran it against the combined data.</li>`);
+
+        if (Array.isArray(evalData.evaluationTrace) && evalData.evaluationTrace.length > 0) {
+            parts.push('<li>Step-by-step reasoning:<ul style="margin-top:6px;">');
+            evalData.evaluationTrace.forEach(t => {
+                parts.push(`<li style="font-family: monospace; font-size: 12.5px; color: #444;">[Step ${t.step}] ${escapeHtml(t.message)}</li>`);
+            });
+            parts.push('</ul></li>');
+        }
+
+        const verdictColor = evalData.actionRequired ? '#1e8e5a' : '#5b6472';
+        parts.push(`<li><strong>Final result:</strong> <span style="color:${verdictColor}; font-weight:700;">actionRequired = ${evalData.actionRequired}</span></li>`);
+
+        if (evalData.actionRequired) {
+            if (evalData.queuePersisted) {
+                parts.push('<li style="color:#1e8e5a;">Patient was written to the <code>referral_queue</code> table and now appears in the Referral Queue panel below.</li>');
+            } else {
+                parts.push('<li style="color:#b8791a;">Patient matched the rule, but the write to <code>referral_queue</code> failed — check server logs.</li>');
+            }
+        } else {
+            parts.push('<li>No triage action required — nothing was written to the queue.</li>');
+        }
+
+        parts.push('</ol>');
+        parts.push(rawJsonDetails(evalData));
+        return parts.join('');
+    }
+
+    function rawJsonDetails(evalData) {
+        return `<details style="margin-top:12px;"><summary style="cursor:pointer; color:#0076d6;">Raw response JSON</summary><pre style="font-size:11.5px; background:#1e1e1e; color:#4af626; padding:10px; border-radius:4px; overflow-x:auto;">${escapeHtml(JSON.stringify(evalData, null, 2))}</pre></details>`;
     }
 
     // Renders the raw Patient/Encounter bundles api/evaluateCql.js fetched
