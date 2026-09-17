@@ -283,7 +283,13 @@
 <div id="cqlModal" class="modal-overlay">
     <div class="modal" style="max-width: 850px; width: 90%; max-height: 90vh; overflow-y: auto;">
         <h2 class="modal-header">CQL Logic Evaluation Worklist</h2>
-        <p style="font-size: 14px; color: #555;">Select a patient from the prepopulated table below to fire the FHIR query and evaluate CQL rules:</p>
+        <p style="font-size: 14px; color: #555; line-height: 1.5;">
+            This simulates the end-to-end workflow: a patient worklist is generated in Epic, and a user
+            selects a patient from that worklist below. Clicking <strong>Evaluate</strong> triggers an API
+            call to the FHIR server to pull that patient's data, which is then evaluated against the
+            selected CQL rule. Any patient the logic evaluates to <strong>true</strong> is placed in the
+            referral queue for further action.
+        </p>
 
         <div class="worklist-selector-group" style="margin-bottom: 12px;">
             <label for="cqlRuleSelect">CQL Rule to evaluate:</label>
