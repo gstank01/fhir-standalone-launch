@@ -268,8 +268,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         parts.push(`<li>Server loaded the compiled rule <strong>"${escapeHtml(evalData.ruleName || ruleLabel)}"</strong> from the <code>cql_rules</code> table and ran it against the combined data.</li>`);
 
+        if (evalData.ruleDescription) {
+            parts.push(`<li>What this rule looks for: <em>${escapeHtml(evalData.ruleDescription)}</em></li>`);
+        }
+        if (evalData.resultExpression) {
+            parts.push(`<li>The logic's final answer is the <code>${escapeHtml(evalData.resultExpression)}</code> expression — everything below builds up to that one boolean.</li>`);
+        }
+
+        if (evalData.findings && Object.keys(evalData.findings).length > 0) {
+            parts.push('<li>What it found, before the final decision:<ul style="margin-top:6px;">');
+            Object.entries(evalData.findings).forEach(([key, value]) => {
+                parts.push(`<li><code>${escapeHtml(key)}</code>: <strong>${escapeHtml(String(value))}</strong></li>`);
+            });
+            parts.push('</ul></li>');
+        }
+
         if (Array.isArray(evalData.evaluationTrace) && evalData.evaluationTrace.length > 0) {
-            parts.push('<li>Step-by-step reasoning:<ul style="margin-top:6px;">');
+            parts.push('<li>Full step-by-step reasoning behind that:<ul style="margin-top:6px;">');
             evalData.evaluationTrace.forEach(t => {
                 parts.push(`<li style="font-family: monospace; font-size: 12.5px; color: #444;">[Step ${t.step}] ${escapeHtml(t.message)}</li>`);
             });

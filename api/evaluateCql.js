@@ -445,6 +445,19 @@ export default async function handler(req, res) {
         ? traceReferralTriageEvaluation(patientResults)
         : traceGenericRuleEvaluation(patientResults, rule.result_expression);
 
+    // Every intermediate `define` the rule computed (minus the final boolean
+    // itself), collapsed to a count/value per expression — a clean "what did
+    // the logic actually find" summary for the UI, independent of any
+    // rule-specific trace wording above. Works for any rule, not just
+    // ReferralTriageLogic, since it just reads whatever named expressions
+    // that rule happens to define.
+    const findings = {};
+    Object.keys(patientResults).forEach(key => {
+      if (key === rule.result_expression) return;
+      const value = patientResults[key];
+      findings[key] = Array.isArray(value) ? `${value.length} found` : value;
+    });
+
     const qualifiesForQueue = patientResults[rule.result_expression] === true;
 
     let queueItem = null;
@@ -470,9 +483,12 @@ export default async function handler(req, res) {
     const responsePayload = {
       success: true,
       ruleName: rule.name,
+      ruleDescription: rule.description,
+      resultExpression: rule.result_expression,
       actionRequired: qualifiesForQueue,
       queueItem,
       queuePersisted,
+      findings,
       evaluationTrace,
       // The raw FHIR bundles as returned by the server (before de-duping/
       // merging for the CQL engine) — surfaced so the frontend can show
