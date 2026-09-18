@@ -2,15 +2,17 @@
 -- rule the CQL-app worklist can select: instead of looking at
 -- Encounter/EpisodeOfCare data (ReferralTriageLogic), this one looks at a
 -- patient's Appointment records and flags a match when any appointment's
--- Location is managed by organization code 'RPY 01' (Royal Marsden
--- Chelsea). Paste and run this once in the Neon SQL editor (or psql) after
--- applying 002_create_cql_rules.sql. Safe to re-run — it upserts by name.
+-- Location is part of the site identified by code 'RPY01' (The Royal
+-- Marsden - Chelsea). Paste and run this once in the Neon SQL editor (or
+-- psql) after applying 002_create_cql_rules.sql. Safe to re-run — it
+-- upserts by name, so re-running after editing the rule just refreshes the
+-- stored row.
 
 INSERT INTO cql_rules (name, version, description, result_expression, cql_text, elm_json, active, workflows)
 VALUES (
   'AppointmentLocationLogic',
   '1.0.0',
-  'Flags a patient for the queue when they have an Appointment at a Location managed by organization code "RPY 01" (Royal Marsden Chelsea).',
+  'Flags a patient for the queue when they have an Appointment at a Location that is part of site code "RPY01" (The Royal Marsden - Chelsea).',
   'Is Royal Marsden Chelsea Appointment',
   $cql$library AppointmentLocationLogic version '1.0.0'
 
@@ -21,23 +23,21 @@ include FHIRHelpers version '4.0.1' called FHIRHelpers
 
 context Patient
 
-// 1. The organization code below is NOT present in the FHIR bundle as a
-// human-readable name — Location.managingOrganization comes back as a bare
-// Identifier (no included Organization resource), so all we ever see is
-// the code 'RPY 01'. The display name "Royal Marsden Chelsea" is a
-// separate, manually-maintained mapping (kept in api/evaluateCql.js next to
-// this rule), exactly the same way "Referral Triage" is a manual mapping
-// for code 2611 in ReferralTriageLogic — neither display string is ever
-// read off the bundle itself.
-// NOTE: identifier.value.value (not identifier.value) — every FHIR
-// primitive is wrapped as {value: ...} by the engine and CQL unwraps it
-// with a trailing .value, same as episodeOfCare's .reference.value below;
-// Identifier's own FHIR field happens to be named "value" too, so the path
-// needs BOTH: one .value for the Identifier's "value" field, one more to
-// unwrap that field's primitive wrapper.
+// 1. The code "RPY01" is never sent in the FHIR bundle — Epic identifies
+// this site only by an internal Location id, which shows up as the
+// *parent* Location referenced by the appointment's Location's own
+// .partOf, e.g.:
+//   "partOf": { "reference": "Location/eLVUrSrT4-KVXjmLgWvTBDg3",
+//               "display": "The Royal Marsden - Chelsea" }
+// So "RPY01" -> Location/eLVUrSrT4-KVXjmLgWvTBDg3 is a mapping we maintain
+// ourselves (also kept in api/evaluateCql.js next to this rule), exactly
+// the same way "Referral Triage" is a manual mapping for code 2611 in
+// ReferralTriageLogic — neither string is read off the bundle itself.
+// Four more site codes will be mapped the same way later; for now only
+// RPY01 is evaluated.
 define "Royal Marsden Chelsea Locations":
   [Location] L
-    where L.managingOrganization.identifier.value.value = 'RPY 01'
+    where L.partOf.reference.value = 'Location/eLVUrSrT4-KVXjmLgWvTBDg3'
 
 // 2. Filter Appointment entries down to ones with a participant (actor)
 // pointing at one of the target Location resources above.
@@ -134,13 +134,13 @@ $cql$,
               "operand": [
                 {
                   "type": "Property",
-                  "path": "managingOrganization.identifier.value.value",
+                  "path": "partOf.reference.value",
                   "scope": "L"
                 },
                 {
                   "type": "Literal",
                   "valueType": "{urn:hl7-org:elm-types:r1}String",
-                  "value": "RPY 01"
+                  "value": "Location/eLVUrSrT4-KVXjmLgWvTBDg3"
                 }
               ]
             }

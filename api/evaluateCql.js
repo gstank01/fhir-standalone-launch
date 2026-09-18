@@ -266,10 +266,10 @@ function traceGenericRuleEvaluation(patientResults, resultExpression) {
 }
 
 // Walks the intermediate results for AppointmentLocationLogic the same way
-// traceReferralTriageEvaluation does for its rule: how many Locations
-// matched organization code 'RPY 01', how many Appointments were found in
-// total, and whether any appointment's participant actually pointed at one
-// of those matched locations.
+// traceReferralTriageEvaluation does for its rule: how many Locations are
+// part of the RPY01 site, how many Appointments were found in total, and
+// whether any appointment's participant actually pointed at one of those
+// matched locations.
 function traceAppointmentLocationEvaluation(patientResults) {
   const trace = [];
   const record = (step, message) => {
@@ -279,9 +279,9 @@ function traceAppointmentLocationEvaluation(patientResults) {
 
   const targetLocations = patientResults['Royal Marsden Chelsea Locations'] || [];
   const matchingAppointments = patientResults['Appointments At Target Location'] || [];
-  const orgName = ORGANIZATION_CODE_NAMES['RPY 01'] || 'unknown organization';
+  const site = SITE_LOCATION_CODES.RPY01;
 
-  record(1, `Found ${targetLocations.length} Location resource(s) managed by organization code "RPY 01" (${orgName}).`);
+  record(1, `Found ${targetLocations.length} Location resource(s) whose partOf references Location/${site.locationId} (site code "RPY01", ${site.displayName}).`);
   if (targetLocations.length === 0) {
     record(1, 'No matching locations -> "Is Royal Marsden Chelsea Appointment" cannot be true.');
   } else {
@@ -300,13 +300,21 @@ function traceAppointmentLocationEvaluation(patientResults) {
   return trace;
 }
 
-// The FHIR bundle only ever carries the bare code "RPY 01" on
-// Location.managingOrganization.identifier — no Organization resource is
-// included, so the human-readable name has to be maintained separately
-// here rather than read off the bundle. Same idea as the "Referral Triage"
-// display text for code 2611 in ReferralTriageLogic.
-const ORGANIZATION_CODE_NAMES = {
-  'RPY 01': 'Royal Marsden Chelsea'
+// Epic never sends a short site code like "RPY01" in the FHIR bundle —
+// only an internal Location id, which shows up as the *parent* Location
+// referenced by the appointment's Location's own .partOf (e.g.
+// { "reference": "Location/eLVUrSrT4-KVXjmLgWvTBDg3",
+//   "display": "The Royal Marsden - Chelsea" }). This is the same manual
+// code -> id mapping the rule's ELM (sql/006_seed_appointment_location_rule.sql)
+// is compiled against, kept here too for the human-readable trace/queue
+// text. Four more sites will be added here later; for now only RPY01 is
+// evaluated (see AppointmentLocationLogic's "Royal Marsden Chelsea
+// Locations" define).
+const SITE_LOCATION_CODES = {
+  RPY01: {
+    locationId: 'eLVUrSrT4-KVXjmLgWvTBDg3',
+    displayName: 'The Royal Marsden - Chelsea'
+  }
 };
 
 function extractPatientDisplayName(patientResource) {
@@ -549,7 +557,7 @@ export default async function handler(req, res) {
         ruleName: rule.name,
         details:
           rule.name === 'AppointmentLocationLogic'
-            ? `Matched rule "${rule.name}" — appointment location is managed by organization code "RPY 01" (${ORGANIZATION_CODE_NAMES['RPY 01']}).`
+            ? `Matched rule "${rule.name}" — appointment location is part of site code "RPY01" (${SITE_LOCATION_CODES.RPY01.displayName}).`
             : `Matched rule "${rule.name}" (${rule.result_expression}).`,
         episodeName: extractEpisodeName(encounterBundle)
       };
