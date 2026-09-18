@@ -249,18 +249,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const patientCount = evalData.patientBundle?.entry?.length ?? 0;
         parts.push(`<li>Server authenticated with the FHIR server and searched for the Patient record — <strong>${patientCount} found</strong>.</li>`);
 
-        if (!evalData.success && !evalData.encounterBundle) {
+        if (!evalData.success && !evalData.encounterBundle && !evalData.appointmentBundle) {
             // 404-style: no patient found, pipeline stopped there.
             parts.push(`<li style="color:#c4433b;">${escapeHtml(evalData.error || 'No matching patient — evaluation stopped here.')}</li>`);
             parts.push('</ol>');
             return parts.join('');
         }
 
-        const encounterCount = evalData.encounterBundle?.entry?.length ?? 0;
-        parts.push(`<li>Server searched for Encounter + EpisodeOfCare records for that patient — <strong>${encounterCount} resource(s) found</strong>.</li>`);
-
-        const appointmentCount = evalData.appointmentBundle?.entry?.length ?? 0;
-        parts.push(`<li>Server searched for Appointment + Location records for that patient — <strong>${appointmentCount} resource(s) found</strong>.</li>`);
+        // Only one of these two is ever fetched for a given evaluation —
+        // which rule is selected decides which FHIR query goes out, so
+        // only the line for the bundle actually returned is shown.
+        if (evalData.encounterBundle) {
+            const encounterCount = evalData.encounterBundle.entry?.length ?? 0;
+            parts.push(`<li>Server searched for Encounter + EpisodeOfCare records for that patient — <strong>${encounterCount} resource(s) found</strong>.</li>`);
+        }
+        if (evalData.appointmentBundle) {
+            const appointmentCount = evalData.appointmentBundle.entry?.length ?? 0;
+            parts.push(`<li>Server searched for Appointment + Location records for that patient — <strong>${appointmentCount} resource(s) found</strong>.</li>`);
+        }
 
         if (!evalData.success) {
             parts.push(`<li style="color:#c4433b;">${escapeHtml(evalData.error || 'Evaluation failed on the server — see the raw response below.')}</li>`);

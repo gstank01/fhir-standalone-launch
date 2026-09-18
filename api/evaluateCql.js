@@ -392,6 +392,33 @@ async function fhirGet(url, accessToken) {
   return body;
 }
 
+// The two rules look at entirely different FHIR resource types, and the
+// user toggles between them in the worklist dropdown — so only the
+// selected rule's query should ever go out, never both. Each fetcher
+// returns just the bundle(s) its rule needs; buildPristineBundle() already
+// skips over an undefined bundle, so the caller doesn't need to fill in a
+// placeholder for the one that wasn't fetched.
+const RESOURCE_FETCHERS = {
+  ReferralTriageLogic: async (fhirUrl, fhirId, accessToken) => {
+    // ✅ FIX: Migrated 'patient=' filter mapping to 'subject=' to adhere to strict FHIR R4 engine specifications
+    const encounterBundle = await fhirGet(
+      `${fhirUrl}/Encounter?subject=${fhirId}` +
+        `&_include=Encounter:patient` +
+        `&_include=Encounter:episode-of-care`,
+      accessToken
+    );
+    return { encounterBundle };
+  },
+  AppointmentLocationLogic: async (fhirUrl, fhirId, accessToken) => {
+    const appointmentBundle = await fhirGet(
+      `${fhirUrl}/Appointment?patient=${fhirId}` +
+        `&_include=Appointment:location`,
+      accessToken
+    );
+    return { appointmentBundle };
+  }
+};
+
 export default async function handler(req, res) {
   const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
@@ -437,38 +464,16 @@ export default async function handler(req, res) {
     }
     const fhirId = patientBundle.entry[0].resource.id;
 
-    // ✅ FIX: Migrated 'patient=' filter mapping to 'subject=' to adhere to strict FHIR R4 engine specifications
-    const encounterBundle = await fhirGet(
-      `${fhirUrl}/Encounter?subject=${fhirId}` +
-        `&_include=Encounter:patient` +
-        `&_include=Encounter:episode-of-care`,
-      accessToken
-    );
+    // Which FHIR resources to pull next depends on which rule was picked —
+    // the two rules look at completely different resource types, and we
+    // only ever want to run the one query that rule actually needs, never
+    // both. RESOURCE_FETCHERS (defined above) maps ruleName -> the fetch
+    // for that rule; unrecognized rule names fall back to the default
+    // rule's fetch.
+    const fetchResources = RESOURCE_FETCHERS[ruleName] || RESOURCE_FETCHERS[DEFAULT_RULE_NAME];
+    const { encounterBundle, appointmentBundle } = await fetchResources(fhirUrl, fhirId, accessToken);
 
-    const episodeBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
-
-    // Fetched unconditionally alongside Encounter/EpisodeOfCare above,
-    // regardless of which rule the caller picked — CQL Retrieves are typed
-    // by resourceType, so a rule that doesn't reference Appointment/Location
-    // simply never touches these entries. Keeps this handler rule-agnostic
-    // instead of needing a per-rule map of which FHIR queries to run.
-    // Wrapped in its own try/catch: this is a second, independent FHIR
-    // query, and a hiccup here (e.g. the server rejecting this particular
-    // _include) shouldn't take down evaluation of a rule that never needed
-    // Appointment/Location data in the first place.
-    let appointmentBundle;
-    try {
-      appointmentBundle = await fhirGet(
-        `${fhirUrl}/Appointment?patient=${fhirId}` +
-          `&_include=Appointment:location`,
-        accessToken
-      );
-    } catch (error) {
-      console.warn(`[APPOINTMENT FETCH] Failed to fetch Appointment/Location data, continuing without it: ${error.message}`);
-      appointmentBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
-    }
-
-    const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle, appointmentBundle]);
+    const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, appointmentBundle]);
     const resourceTypeCounts = pristineBundle.entry.reduce((counts, e) => {
       const type = e.resource.resourceType;
       counts[type] = (counts[type] || 0) + 1;
