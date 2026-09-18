@@ -119,8 +119,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<p>No stored CQL source found for <strong>${escapeHtml(ruleName)}</strong>.</p>`;
         }
 
+        const engineNote = `<p style="font-size:13px; color:#5b6472;">The CQL below is source/reference only — Vercel never parses it at request time. <code>POST /api/evaluateCql</code> runs as a Node.js serverless function that loads this rule's pre-compiled ELM (JSON, stored in <code>cql_rules.elm_json</code>) into the <code>cql-execution</code> npm package's <code>cql.Library</code>, wraps the fetched FHIR bundle in <code>cql-exec-fhir</code>'s <code>PatientSource</code>, and calls <code>cql.Executor.exec()</code> against it. That run evaluates every <code>define</code> in order and returns this rule's final boolean, which is what decides whether a row gets written to <code>referral_queue</code>.</p>`;
+
         const plainLogic = stripCqlComments(rule.cqlText);
-        return `<pre style="font-size:12.5px; background:#ffffff; color:#1e2430; border:1px solid #ddd; padding:12px; border-radius:4px; overflow-x:auto; white-space:pre-wrap; line-height:1.5;">${escapeHtml(plainLogic)}</pre>`;
+        return `${engineNote}<pre style="font-size:12.5px; background:#ffffff; color:#1e2430; border:1px solid #ddd; padding:12px; border-radius:4px; overflow-x:auto; white-space:pre-wrap; line-height:1.5;">${escapeHtml(plainLogic)}</pre>`;
     }
 
     // 2. Close modal on cancel
