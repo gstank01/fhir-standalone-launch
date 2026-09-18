@@ -57,6 +57,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             cqlRuleSelect.innerHTML = '';
             ruleInfoByName = {};
+
+            // Blank by default — the user has to actively pick a rule
+            // rather than one being silently pre-selected.
+            const blankOption = document.createElement('option');
+            blankOption.value = '';
+            blankOption.textContent = '-- Select a rule --';
+            cqlRuleSelect.appendChild(blankOption);
+
             rules.forEach(rule => {
                 const option = document.createElement('option');
                 option.value = rule.name;
@@ -64,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cqlRuleSelect.appendChild(option);
                 ruleInfoByName[rule.name] = rule;
             });
+            cqlRuleSelect.value = '';
 
             safeLog(`SUCCESS: Loaded ${rules.length} active CQL rule(s).`);
         } catch (error) {
@@ -92,15 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<p>No stored CQL source found for <strong>${escapeHtml(ruleName)}</strong>.</p>`;
         }
 
-        const parts = [];
-        if (rule.description) {
-            parts.push(`<p>${escapeHtml(rule.description)}</p>`);
-        }
-        if (rule.resultExpression) {
-            parts.push(`<p>Final boolean: <code>${escapeHtml(rule.resultExpression)}</code></p>`);
-        }
-        parts.push(`<pre style="font-size:12.5px; background:#1e1e1e; color:#e6e6e6; padding:12px; border-radius:4px; overflow-x:auto; white-space:pre-wrap; line-height:1.5;">${escapeHtml(rule.cqlText)}</pre>`);
-        return parts.join('');
+        return `<pre style="font-size:12.5px; background:#1e1e1e; color:#e6e6e6; padding:12px; border-radius:4px; overflow-x:auto; white-space:pre-wrap; line-height:1.5;">${escapeHtml(rule.cqlText)}</pre>`;
     }
 
     // 2. Close modal on cancel
