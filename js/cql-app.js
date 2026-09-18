@@ -93,15 +93,34 @@ document.addEventListener('DOMContentLoaded', () => {
         showActionDetail(`CQL Logic — ${selectedName}`, buildRuleLogicDetailHtml(rule, selectedName));
     });
 
+    // Strips // comments out of a CQL source string for display — full
+    // comment lines are dropped entirely, trailing comments are cut off
+    // the end of a code line, and the resulting run of blank lines left
+    // behind by a removed comment block is collapsed to one.
+    function stripCqlComments(cqlText) {
+        return cqlText
+            .split('\n')
+            .filter(line => !line.trim().startsWith('//'))
+            .map(line => {
+                const idx = line.indexOf('//');
+                return idx === -1 ? line : line.slice(0, idx).replace(/\s+$/, '');
+            })
+            .join('\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
     // Shows the human-readable CQL source exactly as stored in the
-    // cql_rules.cql_text column — the source that was hand-compiled into
-    // the ELM the engine actually executes, not the compiled ELM itself.
+    // cql_rules.cql_text column (minus // comments) — the plain logic that
+    // was hand-compiled into the ELM the engine actually executes, not the
+    // compiled ELM itself.
     function buildRuleLogicDetailHtml(rule, ruleName) {
         if (!rule || !rule.cqlText) {
             return `<p>No stored CQL source found for <strong>${escapeHtml(ruleName)}</strong>.</p>`;
         }
 
-        return `<pre style="font-size:12.5px; background:#1e1e1e; color:#e6e6e6; padding:12px; border-radius:4px; overflow-x:auto; white-space:pre-wrap; line-height:1.5;">${escapeHtml(rule.cqlText)}</pre>`;
+        const plainLogic = stripCqlComments(rule.cqlText);
+        return `<pre style="font-size:12.5px; background:#ffffff; color:#1e2430; border:1px solid #ddd; padding:12px; border-radius:4px; overflow-x:auto; white-space:pre-wrap; line-height:1.5;">${escapeHtml(plainLogic)}</pre>`;
     }
 
     // 2. Close modal on cancel
