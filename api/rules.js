@@ -33,13 +33,16 @@ function rowToRule(row) {
     version: row.version,
     description: row.description,
     resultExpression: row.result_expression,
+    cqlText: row.cql_text,
     active: row.active,
     workflows: row.workflows,
     createdAt: row.created_at,
     updatedAt: row.updated_at
-    // cql_text / elm_json intentionally omitted from the list response —
-    // elm_json in particular can be large; fetch a single rule's full
-    // content by name via evaluateCql's own DB read if ever needed.
+    // elm_json intentionally omitted from the list response — it's the
+    // compiled output (can be large and isn't meant for human reading);
+    // cql_text is the human-readable source and is small enough to include
+    // here so callers (e.g. the CQL-app dropdown) can display it without a
+    // second request.
   };
 }
 

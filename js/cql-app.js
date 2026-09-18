@@ -8,6 +8,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const cqlRuleSelect = document.getElementById('cqlRuleSelect');
     const fhirDataEl = document.getElementById('fhirData');
 
+    // Populated by loadCqlRules() below, keyed by rule name — lets the
+    // "show me the raw logic" pop-up look up a rule's CQL source without a
+    // second network request every time the dropdown selection changes.
+    let ruleInfoByName = {};
+
     // Safe fallback check to ensure missing log() utilities do not crash the module execution thread
     function safeLog(message) {
         if (typeof log === 'function') {
@@ -51,11 +56,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             cqlRuleSelect.innerHTML = '';
+            ruleInfoByName = {};
             rules.forEach(rule => {
                 const option = document.createElement('option');
                 option.value = rule.name;
                 option.textContent = `${rule.name} (v${rule.version})${rule.description ? ' — ' + rule.description : ''}`;
                 cqlRuleSelect.appendChild(option);
+                ruleInfoByName[rule.name] = rule;
             });
 
             safeLog(`SUCCESS: Loaded ${rules.length} active CQL rule(s).`);
@@ -63,6 +70,37 @@ document.addEventListener('DOMContentLoaded', () => {
             cqlRuleSelect.innerHTML = '<option value="">Error loading rules</option>';
             safeLog(`<span style="color: red;">ERROR: Failed to load CQL rules: ${escapeHtml(error.message)}</span>`);
         }
+    }
+
+    // 1c. Whenever the user actually changes which rule is selected (not on
+    // the silent initial population above — that never fires a `change`
+    // event), show its raw, pre-compiled CQL source so it can be walked
+    // through live. Works for any rule in the dropdown, not just these two.
+    cqlRuleSelect?.addEventListener('change', () => {
+        const selectedName = cqlRuleSelect.value;
+        if (!selectedName) return;
+        const rule = ruleInfoByName[selectedName];
+        safeLog(`User selected CQL rule: ${selectedName}`);
+        showActionDetail(`CQL Logic — ${selectedName}`, buildRuleLogicDetailHtml(rule, selectedName));
+    });
+
+    // Shows the human-readable CQL source exactly as stored in the
+    // cql_rules.cql_text column — the source that was hand-compiled into
+    // the ELM the engine actually executes, not the compiled ELM itself.
+    function buildRuleLogicDetailHtml(rule, ruleName) {
+        if (!rule || !rule.cqlText) {
+            return `<p>No stored CQL source found for <strong>${escapeHtml(ruleName)}</strong>.</p>`;
+        }
+
+        const parts = [];
+        if (rule.description) {
+            parts.push(`<p>${escapeHtml(rule.description)}</p>`);
+        }
+        if (rule.resultExpression) {
+            parts.push(`<p>Final boolean: <code>${escapeHtml(rule.resultExpression)}</code></p>`);
+        }
+        parts.push(`<pre style="font-size:12.5px; background:#1e1e1e; color:#e6e6e6; padding:12px; border-radius:4px; overflow-x:auto; white-space:pre-wrap; line-height:1.5;">${escapeHtml(rule.cqlText)}</pre>`);
+        return parts.join('');
     }
 
     // 2. Close modal on cancel
