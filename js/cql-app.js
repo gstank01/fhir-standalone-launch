@@ -342,8 +342,21 @@ document.addEventListener('DOMContentLoaded', () => {
         parts.push(`<li><strong>Final result:</strong> <span style="color:${verdictColor}; font-weight:700;">actionRequired = ${evalData.actionRequired}</span></li>`);
 
         if (evalData.actionRequired) {
-            if (evalData.queuePersisted) {
-                parts.push('<li style="color:#1e8e5a;">Patient was written to the <code>referral_queue</code> table and now appears in the Referral Queue panel below.</li>');
+            const items = Array.isArray(evalData.queueItems) && evalData.queueItems.length > 0
+                ? evalData.queueItems
+                : (evalData.queueItem ? [evalData.queueItem] : []);
+
+            if (items.length > 1) {
+                // AppointmentLocationLogic case — one row per matching appointment.
+                parts.push(`<li>${items.length} matching appointments were written to the <code>referral_queue</code> table, one row each:<ul style="margin-top:6px;">`);
+                items.forEach(item => {
+                    const rowColor = item.persisted === false ? '#b8791a' : '#1e8e5a';
+                    parts.push(`<li style="color:${rowColor};">Appointment <code>${escapeHtml(item.appointmentId || '?')}</code> — <strong>${escapeHtml(item.locationName || 'unknown location')}</strong>${item.persisted === false ? ' (write failed)' : ''}</li>`);
+                });
+                parts.push('</ul></li>');
+            } else if (items.length === 1 && evalData.queuePersisted) {
+                const locationSuffix = items[0].locationName ? ` at <strong>${escapeHtml(items[0].locationName)}</strong>` : '';
+                parts.push(`<li style="color:#1e8e5a;">Patient was written to the <code>referral_queue</code> table${locationSuffix} and now appears in the Referral Queue panel below.</li>`);
             } else {
                 parts.push('<li style="color:#b8791a;">Patient matched the rule, but the write to <code>referral_queue</code> failed — check server logs.</li>');
             }

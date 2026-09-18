@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.refreshReferralQueue = loadQueue;
 
     async function loadQueue(showPopup = false) {
-        queueTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:15px;">Loading referral queue...</td></tr>';
+        queueTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:15px;">Loading referral queue...</td></tr>';
         safeLog('Fetching referral queue via /api/queue...');
 
         try {
@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const items = data.items;
             if (!items || items.length === 0) {
                 safeLog('Referral queue is empty.');
-                queueTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:15px;">No patients currently in the referral queue.</td></tr>';
+                queueTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:15px;">No patients currently in the referral queue.</td></tr>';
                 if (showPopup) {
                     showActionDetail('Refresh Queue', `
                         <p>Sent <code>GET /api/queue</code>, which reads the <code>referral_queue</code> table.</p>
@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const row = document.createElement('tr');
                 const queuedAt = item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A';
 
-                [item.name || 'Unknown', item.identifier || 'N/A', item.dob || 'N/A', item.rule_name || 'N/A', item.episode_name || 'N/A', item.status || 'N/A', queuedAt].forEach(value => {
+                [item.name || 'Unknown', item.identifier || 'N/A', item.dob || 'N/A', item.rule_name || 'N/A', item.episode_name || 'N/A', item.location_name || 'N/A', item.status || 'N/A', queuedAt].forEach(value => {
                     const cell = document.createElement('td');
                     cell.style.padding = '8px 10px';
                     cell.style.borderBottom = '1px solid #ddd';
@@ -122,17 +122,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="padding:4px 8px;">${escapeHtml(item.name || 'Unknown')}</td>
                         <td style="padding:4px 8px;">${escapeHtml(item.identifier || 'N/A')}</td>
                         <td style="padding:4px 8px;">${escapeHtml(item.rule_name || 'N/A')}</td>
+                        <td style="padding:4px 8px;">${escapeHtml(item.location_name || 'N/A')}</td>
                         <td style="padding:4px 8px;">${escapeHtml(item.status || 'N/A')}</td>
                     </tr>
                 `).join('');
                 showActionDetail('Refresh Queue', `
                     <p>Sent <code>GET /api/queue</code>, which reads the <code>referral_queue</code> table.</p>
-                    <p><strong>${items.length}</strong> patient(s) currently queued:</p>
+                    <p><strong>${items.length}</strong> entr${items.length === 1 ? 'y' : 'ies'} currently queued (a patient matching AppointmentLocationLogic on more than one appointment shows up as more than one row here — one per matching appointment):</p>
                     <table style="width:100%; border-collapse: collapse; font-size: 13px;">
                         <thead><tr style="background:#f4f4f4;">
                             <th style="text-align:left; padding:4px 8px;">Name</th>
                             <th style="text-align:left; padding:4px 8px;">Identifier</th>
                             <th style="text-align:left; padding:4px 8px;">Rule</th>
+                            <th style="text-align:left; padding:4px 8px;">Location</th>
                             <th style="text-align:left; padding:4px 8px;">Status</th>
                         </tr></thead>
                         <tbody>${rows}</tbody>
@@ -145,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (showPopup) {
                 showActionDetail('Refresh Queue (failed)', `<p style="color:#c4433b;">${escapeHtml(error.message)}</p>`);
             }
-            queueTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:15px; color: red;">Error: ${escapeHtml(error.message)}</td></tr>`;
+            queueTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:15px; color: red;">Error: ${escapeHtml(error.message)}</td></tr>`;
         }
     }
 

@@ -345,9 +345,59 @@ function extractEpisodeName(encounterBundle) {
   return names.length ? names.join('; ') : null;
 }
 
+// AppointmentLocationLogic queues one row PER MATCHING APPOINTMENT (not one
+// per patient) so each visit's own location shows up in the queue. Walks
+// the raw appointment bundle directly (not the CQL-wrapped patientResults)
+// re-deriving the exact same match the ELM's "Royal Marsden Chelsea
+// Locations" / "Appointments At Target Location" defines compute — partOf
+// pointing at the target site, then a participant pointing at one of
+// those locations — because the raw bundle is the simplest place to read
+// plain field values, same reasoning as extractEpisodeName() above.
+function extractMatchingAppointmentLocations(appointmentBundle) {
+  if (!appointmentBundle || !appointmentBundle.entry) return [];
+
+  const targetSiteRef = `Location/${SITE_LOCATION_CODES.RPY01.locationId}`;
+
+  const locationsById = {};
+  appointmentBundle.entry
+    .filter(e => e.resource && e.resource.resourceType === 'Location')
+    .forEach(e => { locationsById[e.resource.id] = e.resource; });
+
+  const targetLocationRefs = new Set(
+    Object.values(locationsById)
+      .filter(loc => loc.partOf && loc.partOf.reference === targetSiteRef)
+      .map(loc => `Location/${loc.id}`)
+  );
+
+  const matches = [];
+  appointmentBundle.entry
+    .filter(e => e.resource && e.resource.resourceType === 'Appointment')
+    .forEach(e => {
+      const appt = e.resource;
+      const matchedParticipant = (appt.participant || []).find(
+        p => p.actor && targetLocationRefs.has(p.actor.reference)
+      );
+      if (!matchedParticipant) return;
+
+      const location = locationsById[matchedParticipant.actor.reference.split('/')[1]];
+      matches.push({
+        appointmentId: appt.id,
+        appointmentStart: appt.start || null,
+        locationName: (location && (location.name || (location.partOf && location.partOf.display))) || SITE_LOCATION_CODES.RPY01.displayName
+      });
+    });
+
+  return matches;
+}
+
 // Inserts (or refreshes) a row in the referral_queue table for a patient the
 // CQL engine has flagged. Failing to persist should never fail the overall
 // evaluation response — the caller still needs to see the CQL result.
+// appointmentId defaults to '' for rules (like ReferralTriageLogic) that
+// aren't about a specific appointment — the referral_queue unique
+// constraint is on (patient_id, appointment_id), so that still collapses
+// to at most one row per patient for those rules, same as before, while
+// AppointmentLocationLogic gets one row per distinct appointment.
 async function addToReferralQueue(queueItem) {
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not configured; skipping referral_queue persistence.');
@@ -357,12 +407,13 @@ async function addToReferralQueue(queueItem) {
   try {
     const sql = neon(process.env.DATABASE_URL);
     await sql`
-      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details, rule_name, episode_name)
+      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details, rule_name, episode_name, appointment_id, location_name)
       VALUES (
         ${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob},
-        ${queueItem.status}, ${queueItem.details}, ${queueItem.ruleName}, ${queueItem.episodeName}
+        ${queueItem.status}, ${queueItem.details}, ${queueItem.ruleName}, ${queueItem.episodeName},
+        ${queueItem.appointmentId || ''}, ${queueItem.locationName || null}
       )
-      ON CONFLICT (patient_id) DO UPDATE SET
+      ON CONFLICT (patient_id, appointment_id) DO UPDATE SET
         identifier = EXCLUDED.identifier,
         name = EXCLUDED.name,
         dob = EXCLUDED.dob,
@@ -370,6 +421,7 @@ async function addToReferralQueue(queueItem) {
         details = EXCLUDED.details,
         rule_name = EXCLUDED.rule_name,
         episode_name = EXCLUDED.episode_name,
+        location_name = EXCLUDED.location_name,
         updated_at = now()
     `;
     return true;
@@ -541,28 +593,67 @@ export default async function handler(req, res) {
 
     const qualifiesForQueue = patientResults[rule.result_expression] === true;
 
-    let queueItem = null;
-    let queuePersisted = null; // null = n/a, true/false once we've attempted a write
+    // AppointmentLocationLogic gets one queueItem per matching appointment
+    // (each with its own location); every other rule keeps the original
+    // single-item-per-patient behavior.
+    let queueItems = [];
 
     if (qualifiesForQueue) {
       const patientResource = patientBundle.entry[0].resource;
-      queueItem = {
-        id: `idx-${Date.now()}`,
+      const baseItem = {
         patientId: fhirId,
         identifier,
         name: extractPatientDisplayName(patientResource),
         dob: patientResource.birthDate || null,
         timestamp: new Date().toISOString(),
         status: 'Pending Action',
-        ruleName: rule.name,
-        details:
-          rule.name === 'AppointmentLocationLogic'
-            ? `Matched rule "${rule.name}" — appointment location is part of site code "RPY01" (${SITE_LOCATION_CODES.RPY01.displayName}).`
-            : `Matched rule "${rule.name}" (${rule.result_expression}).`,
-        episodeName: extractEpisodeName(encounterBundle)
+        ruleName: rule.name
       };
-      queuePersisted = await addToReferralQueue(queueItem);
+
+      if (rule.name === 'AppointmentLocationLogic') {
+        const appointmentMatches = extractMatchingAppointmentLocations(appointmentBundle);
+        queueItems = appointmentMatches.map(m => ({
+          ...baseItem,
+          id: `idx-${Date.now()}-${m.appointmentId}`,
+          appointmentId: m.appointmentId,
+          locationName: m.locationName,
+          episodeName: null,
+          details: `Matched rule "${rule.name}" — appointment${m.appointmentStart ? ` on ${m.appointmentStart}` : ''} at "${m.locationName}" (site code "RPY01").`
+        }));
+
+        // The CQL boolean and this JS re-derivation walk the exact same
+        // partOf/participant structure, so they should always agree; this
+        // is only a safety net so a "true" result is never silently
+        // dropped if they somehow disagree.
+        if (queueItems.length === 0) {
+          queueItems = [{
+            ...baseItem,
+            id: `idx-${Date.now()}`,
+            appointmentId: '',
+            locationName: SITE_LOCATION_CODES.RPY01.displayName,
+            episodeName: null,
+            details: `Matched rule "${rule.name}" (${rule.result_expression}).`
+          }];
+        }
+      } else {
+        queueItems = [{
+          ...baseItem,
+          id: `idx-${Date.now()}`,
+          appointmentId: '',
+          locationName: null,
+          episodeName: extractEpisodeName(encounterBundle),
+          details: `Matched rule "${rule.name}" (${rule.result_expression}).`
+        }];
+      }
+
+      for (const item of queueItems) {
+        item.persisted = await addToReferralQueue(item);
+      }
     }
+
+    // null = n/a (no match), true = every queued row persisted, false =
+    // at least one write failed.
+    const queuePersisted = queueItems.length > 0 ? queueItems.every(item => item.persisted) : null;
 
     const responsePayload = {
       success: true,
@@ -570,7 +661,11 @@ export default async function handler(req, res) {
       ruleDescription: rule.description,
       resultExpression: rule.result_expression,
       actionRequired: qualifiesForQueue,
-      queueItem,
+      // Back-compat single-item view (first/only match) plus the full list —
+      // AppointmentLocationLogic can produce more than one row (one per
+      // matching appointment), everything else still produces exactly one.
+      queueItem: queueItems[0] || null,
+      queueItems,
       queuePersisted,
       findings,
       evaluationTrace,

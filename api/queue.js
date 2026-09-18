@@ -10,7 +10,7 @@ export default async function handler(req, res) {
         try {
             const sql = neon(process.env.DATABASE_URL);
             const items = await sql`
-                SELECT id, patient_id, identifier, name, dob, status, details, rule_name, episode_name, created_at, updated_at
+                SELECT id, patient_id, identifier, name, dob, status, details, rule_name, episode_name, appointment_id, location_name, created_at, updated_at
                 FROM referral_queue
                 ORDER BY created_at DESC
             `;
