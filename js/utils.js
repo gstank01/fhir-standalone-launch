@@ -14,6 +14,25 @@ function log(message) {
     div.scrollTop = div.scrollHeight;
 }
 
+// --- Shared "what just happened" pop-up, used by the CQL-app and the
+// referral queue to give a demo audience a plain-language walkthrough of
+// each action instead of just a log line + raw JSON. ---
+function showActionDetail(title, bodyHtml) {
+    const modal = document.getElementById('actionDetailModal');
+    const titleEl = document.getElementById('actionDetailTitle');
+    const bodyEl = document.getElementById('actionDetailBody');
+    if (!modal || !titleEl || !bodyEl) return;
+    titleEl.textContent = title;
+    bodyEl.innerHTML = bodyHtml;
+    modal.classList.add('active');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('closeActionDetailBtn')?.addEventListener('click', () => {
+        document.getElementById('actionDetailModal')?.classList.remove('active');
+    });
+});
+
 // ---CALLBACK HANDLER (Runs inside Pop-up when redirected back from EHR) ---
 
 (function handleCallback() {
