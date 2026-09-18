@@ -259,6 +259,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const encounterCount = evalData.encounterBundle?.entry?.length ?? 0;
         parts.push(`<li>Server searched for Encounter + EpisodeOfCare records for that patient — <strong>${encounterCount} resource(s) found</strong>.</li>`);
 
+        const appointmentCount = evalData.appointmentBundle?.entry?.length ?? 0;
+        parts.push(`<li>Server searched for Appointment + Location records for that patient — <strong>${appointmentCount} resource(s) found</strong>.</li>`);
+
         if (!evalData.success) {
             parts.push(`<li style="color:#c4433b;">${escapeHtml(evalData.error || 'Evaluation failed on the server — see the raw response below.')}</li>`);
             parts.push('</ol>');
@@ -318,13 +321,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderFhirData(evalData) {
         if (!fhirDataEl) return;
 
-        if (!evalData || (!evalData.patientBundle && !evalData.encounterBundle)) {
+        if (!evalData || (!evalData.patientBundle && !evalData.encounterBundle && !evalData.appointmentBundle)) {
             fhirDataEl.textContent = 'No FHIR bundle returned for this request.';
             return;
         }
 
         fhirDataEl.textContent = JSON.stringify(
-            { patientBundle: evalData.patientBundle, encounterBundle: evalData.encounterBundle },
+            { patientBundle: evalData.patientBundle, encounterBundle: evalData.encounterBundle, appointmentBundle: evalData.appointmentBundle },
             null,
             2
         );

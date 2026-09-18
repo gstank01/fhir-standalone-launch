@@ -265,6 +265,50 @@ function traceGenericRuleEvaluation(patientResults, resultExpression) {
   return trace;
 }
 
+// Walks the intermediate results for AppointmentLocationLogic the same way
+// traceReferralTriageEvaluation does for its rule: how many Locations
+// matched organization code 'RPY 01', how many Appointments were found in
+// total, and whether any appointment's participant actually pointed at one
+// of those matched locations.
+function traceAppointmentLocationEvaluation(patientResults) {
+  const trace = [];
+  const record = (step, message) => {
+    console.log(`[CQL STEP ${step}] ${message}`);
+    trace.push({ step, message });
+  };
+
+  const targetLocations = patientResults['Royal Marsden Chelsea Locations'] || [];
+  const matchingAppointments = patientResults['Appointments At Target Location'] || [];
+  const orgName = ORGANIZATION_CODE_NAMES['RPY 01'] || 'unknown organization';
+
+  record(1, `Found ${targetLocations.length} Location resource(s) managed by organization code "RPY 01" (${orgName}).`);
+  if (targetLocations.length === 0) {
+    record(1, 'No matching locations -> "Is Royal Marsden Chelsea Appointment" cannot be true.');
+  } else {
+    targetLocations.forEach((loc, i) => {
+      record(1, `  Location #${i + 1}: id=${loc.id?.value}`);
+    });
+  }
+
+  record(2, `Found ${matchingAppointments.length} Appointment(s) with a participant referencing one of those location(s).`);
+  matchingAppointments.forEach((appt, i) => {
+    record(2, `  Appointment #${i + 1} (id=${appt.id?.value}, status=${appt.status?.value})`);
+  });
+
+  record(3, `Final result -> "Is Royal Marsden Chelsea Appointment" = ${patientResults['Is Royal Marsden Chelsea Appointment']}`);
+
+  return trace;
+}
+
+// The FHIR bundle only ever carries the bare code "RPY 01" on
+// Location.managingOrganization.identifier — no Organization resource is
+// included, so the human-readable name has to be maintained separately
+// here rather than read off the bundle. Same idea as the "Referral Triage"
+// display text for code 2611 in ReferralTriageLogic.
+const ORGANIZATION_CODE_NAMES = {
+  'RPY 01': 'Royal Marsden Chelsea'
+};
+
 function extractPatientDisplayName(patientResource) {
   const name = (patientResource.name || []).find(n => n.text || n.family || (n.given && n.given.length)) || {};
   if (name.text) return name.text;
@@ -403,7 +447,28 @@ export default async function handler(req, res) {
 
     const episodeBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
 
-    const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle]);
+    // Fetched unconditionally alongside Encounter/EpisodeOfCare above,
+    // regardless of which rule the caller picked — CQL Retrieves are typed
+    // by resourceType, so a rule that doesn't reference Appointment/Location
+    // simply never touches these entries. Keeps this handler rule-agnostic
+    // instead of needing a per-rule map of which FHIR queries to run.
+    // Wrapped in its own try/catch: this is a second, independent FHIR
+    // query, and a hiccup here (e.g. the server rejecting this particular
+    // _include) shouldn't take down evaluation of a rule that never needed
+    // Appointment/Location data in the first place.
+    let appointmentBundle;
+    try {
+      appointmentBundle = await fhirGet(
+        `${fhirUrl}/Appointment?patient=${fhirId}` +
+          `&_include=Appointment:location`,
+        accessToken
+      );
+    } catch (error) {
+      console.warn(`[APPOINTMENT FETCH] Failed to fetch Appointment/Location data, continuing without it: ${error.message}`);
+      appointmentBundle = { resourceType: 'Bundle', type: 'searchset', entry: [] };
+    }
+
+    const pristineBundle = buildPristineBundle([patientBundle, encounterBundle, episodeBundle, appointmentBundle]);
     const resourceTypeCounts = pristineBundle.entry.reduce((counts, e) => {
       const type = e.resource.resourceType;
       counts[type] = (counts[type] || 0) + 1;
@@ -421,7 +486,8 @@ export default async function handler(req, res) {
         error: 'Engine executed but produced no patient results.',
         loadedPatientId,
         patientBundle,
-        encounterBundle
+        encounterBundle,
+        appointmentBundle
       };
       console.error(`CQL engine returned no patient results. Loaded patient id: ${loadedPatientId}`);
       console.log(`[RESPONSE] 422`, JSON.stringify({ ...noResultsPayload, patientBundle: '(omitted)', encounterBundle: '(omitted — see [FHIR RESPONSE]/[BUNDLE] above)' }));
@@ -443,6 +509,8 @@ export default async function handler(req, res) {
     const evaluationTrace =
       rule.name === 'ReferralTriageLogic'
         ? traceReferralTriageEvaluation(patientResults)
+        : rule.name === 'AppointmentLocationLogic'
+        ? traceAppointmentLocationEvaluation(patientResults)
         : traceGenericRuleEvaluation(patientResults, rule.result_expression);
 
     // Every intermediate `define` the rule computed (minus the final boolean
@@ -474,7 +542,10 @@ export default async function handler(req, res) {
         timestamp: new Date().toISOString(),
         status: 'Pending Action',
         ruleName: rule.name,
-        details: `Matched rule "${rule.name}" (${rule.result_expression}).`,
+        details:
+          rule.name === 'AppointmentLocationLogic'
+            ? `Matched rule "${rule.name}" — appointment location is managed by organization code "RPY 01" (${ORGANIZATION_CODE_NAMES['RPY 01']}).`
+            : `Matched rule "${rule.name}" (${rule.result_expression}).`,
         episodeName: extractEpisodeName(encounterBundle)
       };
       queuePersisted = await addToReferralQueue(queueItem);
@@ -494,7 +565,8 @@ export default async function handler(req, res) {
       // merging for the CQL engine) — surfaced so the frontend can show
       // exactly what came back, e.g. in the FHIR Response Data panel.
       patientBundle,
-      encounterBundle
+      encounterBundle,
+      appointmentBundle
     };
     console.log(`[RESPONSE] 200`, JSON.stringify({ ...responsePayload, patientBundle: '(omitted)', encounterBundle: '(omitted — see [FHIR RESPONSE]/[BUNDLE] above)' }));
     return res.status(200).json(responsePayload);
