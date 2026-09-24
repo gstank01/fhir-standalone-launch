@@ -93,6 +93,26 @@ document.addEventListener('DOMContentLoaded', () => {
         showActionDetail(`CQL Logic — ${selectedName}`, buildRuleLogicDetailHtml(rule, selectedName));
     });
 
+    // 1d. Info icon above the rule selector — explains the v1 -> v2 change
+    // (matched-resources Bundle) that applies to both rules, independent of
+    // whichever one happens to be selected right now.
+    document.getElementById('cqlLogicInfoBtn')?.addEventListener('click', () => {
+        safeLog('User opened the "what changed in v2" info popup.');
+        showActionDetail('CQL Logic — What Changed in v2', buildLogicChangelogHtml());
+    });
+
+    function buildLogicChangelogHtml() {
+        return `
+            <p>Both CQL rules were bumped from <strong>v1.0.0</strong> to <strong>v2.0.0</strong>. The v1.0.0 definitions are unchanged and preserved as-is in this repo's git history (<code>sql/004_seed_referral_triage_rule.sql</code> and <code>sql/006_seed_appointment_location_rule.sql</code>) — v2 is a separate, additive update (<code>sql/008</code> and <code>sql/009</code>), not an edit to those files.</p>
+            <p><strong>What actually changed:</strong> the matching logic itself — the CQL <code>define</code> statements, and therefore which patients/appointments qualify — is <em>identical</em> between v1 and v2. What's new is what the server returns after evaluation: a real FHIR <code>Bundle</code> resource (<code>matchedBundle</code> in the response) containing exactly the resources that made the rule evaluate to true:</p>
+            <ul style="padding-left:20px;">
+                <li><strong>ReferralTriageLogic v2:</strong> Patient + the matching Encounter(s) + the matching EpisodeOfCare(s).</li>
+                <li><strong>AppointmentLocationLogic v2:</strong> Patient + each matching Appointment + its Location.</li>
+            </ul>
+            <p>That bundle is assembled in <code>api/evaluateCql.js</code> after the CQL engine returns its boolean result — it's not part of the CQL/ELM itself, so it applies the same way no matter which of the two rules you toggle to below.</p>
+        `;
+    }
+
     // Strips // comments out of a CQL source string for display — full
     // comment lines are dropped entirely, trailing comments are cut off
     // the end of a code line, and the resulting run of blank lines left
@@ -386,6 +406,10 @@ document.addEventListener('DOMContentLoaded', () => {
             parts.push('<li>No triage action required — nothing was written to the queue.</li>');
         }
 
+        if (evalData.matchedBundle && Array.isArray(evalData.matchedBundle.entry)) {
+            parts.push(`<li>Server also returned a FHIR <code>Bundle</code> (<code>matchedBundle</code>) containing exactly the <strong>${evalData.matchedBundle.entry.length}</strong> resource(s) that made this evaluation true — see "FHIR Response Data" or the raw JSON below.</li>`);
+        }
+
         parts.push('</ol>');
         parts.push(rawJsonDetails(evalData));
         return parts.join('');
@@ -400,13 +424,20 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderFhirData(evalData) {
         if (!fhirDataEl) return;
 
-        if (!evalData || (!evalData.patientBundle && !evalData.encounterBundle && !evalData.appointmentBundle)) {
+        if (!evalData || (!evalData.patientBundle && !evalData.encounterBundle && !evalData.appointmentBundle && !evalData.matchedBundle)) {
             fhirDataEl.textContent = 'No FHIR bundle returned for this request.';
             return;
         }
 
         fhirDataEl.textContent = JSON.stringify(
-            { patientBundle: evalData.patientBundle, encounterBundle: evalData.encounterBundle, appointmentBundle: evalData.appointmentBundle },
+            {
+                patientBundle: evalData.patientBundle,
+                encounterBundle: evalData.encounterBundle,
+                appointmentBundle: evalData.appointmentBundle,
+                // v2: the resources that actually made the rule evaluate to
+                // true, packaged as their own FHIR Bundle.
+                matchedBundle: evalData.matchedBundle
+            },
             null,
             2
         );

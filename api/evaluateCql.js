@@ -383,11 +383,75 @@ function extractMatchingAppointmentLocations(appointmentBundle) {
       matches.push({
         appointmentId: appt.id,
         appointmentStart: appt.start || null,
-        locationName: (location && (location.name || (location.partOf && location.partOf.display))) || SITE_LOCATION_CODES.RPY01.displayName
+        locationName: (location && (location.name || (location.partOf && location.partOf.display))) || SITE_LOCATION_CODES.RPY01.displayName,
+        // Full raw resources, kept alongside the summary fields above so
+        // buildMatchedBundle() can assemble a real FHIR Bundle out of
+        // exactly what matched, without re-scanning the bundle.
+        apptResource: appt,
+        locationResource: location || null
       });
     });
 
   return matches;
+}
+
+// v2: same matching criteria as ReferralTriageLogic v1.0.0 (see
+// triage-logic.cql / sql/004_seed_referral_triage_rule.sql, unchanged) —
+// this just re-derives, from the raw bundle, which specific Encounter(s)
+// and EpisodeOfCare(s) actually satisfied the rule, so buildMatchedBundle()
+// can package exactly those resources instead of the whole fetched bundle.
+const HOSPITAL_CODE_SYSTEM = 'urn:oid:1.2.840.114350.1.13.520.3.7.10.698084.30';
+const REFERRAL_TRIAGE_CODE = '2611';
+
+function extractMatchingEncountersAndEpisodes(encounterBundle) {
+  if (!encounterBundle || !encounterBundle.entry) return { encounters: [], episodes: [] };
+
+  const allEncounters = encounterBundle.entry
+    .filter(e => e.resource && e.resource.resourceType === 'Encounter')
+    .map(e => e.resource);
+  const allEpisodes = encounterBundle.entry
+    .filter(e => e.resource && e.resource.resourceType === 'EpisodeOfCare')
+    .map(e => e.resource);
+
+  const activeEpisodes = allEpisodes.filter(ep => ep.status === 'active');
+  const activeEpisodeRefs = new Set(activeEpisodes.map(ep => `EpisodeOfCare/${ep.id}`));
+
+  const referralEncounters = allEncounters.filter(enc =>
+    (enc.type || []).some(t => (t.coding || []).some(c => c.system === HOSPITAL_CODE_SYSTEM && c.code === REFERRAL_TRIAGE_CODE))
+  );
+
+  const matchedEncounters = referralEncounters.filter(enc =>
+    (enc.episodeOfCare || []).some(eoc => activeEpisodeRefs.has(eoc.reference))
+  );
+
+  const matchedEpisodeRefs = new Set(
+    matchedEncounters.flatMap(enc => (enc.episodeOfCare || []).map(eoc => eoc.reference))
+  );
+  const matchedEpisodes = activeEpisodes.filter(ep => matchedEpisodeRefs.has(`EpisodeOfCare/${ep.id}`));
+
+  return { encounters: matchedEncounters, episodes: matchedEpisodes };
+}
+
+// Packages the Patient plus whatever matched resources a rule identifies
+// into a real FHIR Bundle (de-duped by resourceType/id, same rule
+// buildPristineBundle() already uses) — this is what api/evaluateCql.js's
+// v2 rules return as `matchedBundle` alongside the boolean result.
+function buildMatchedBundle(patientResource, resources) {
+  const seen = new Set();
+  const entries = [];
+
+  const addResource = r => {
+    if (!r) return;
+    const key = `${r.resourceType}/${r.id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    entries.push({ fullUrl: key, resource: r });
+  };
+
+  addResource(patientResource);
+  resources.forEach(addResource);
+
+  return { resourceType: 'Bundle', type: 'collection', entry: entries };
 }
 
 // Inserts (or refreshes) a row in the referral_queue table for a patient the
@@ -597,6 +661,10 @@ export default async function handler(req, res) {
     // (each with its own location); every other rule keeps the original
     // single-item-per-patient behavior.
     let queueItems = [];
+    // v2: a FHIR Bundle of exactly the resources that made the rule
+    // evaluate to true — the matching logic itself is unchanged from v1,
+    // this is purely additional output assembled after the boolean result.
+    let matchedBundle = null;
 
     if (qualifiesForQueue) {
       const patientResource = patientBundle.entry[0].resource;
@@ -635,6 +703,11 @@ export default async function handler(req, res) {
             details: `Matched rule "${rule.name}" (${rule.result_expression}).`
           }];
         }
+
+        matchedBundle = buildMatchedBundle(
+          patientResource,
+          appointmentMatches.flatMap(m => [m.apptResource, m.locationResource])
+        );
       } else {
         queueItems = [{
           ...baseItem,
@@ -644,6 +717,13 @@ export default async function handler(req, res) {
           episodeName: extractEpisodeName(encounterBundle),
           details: `Matched rule "${rule.name}" (${rule.result_expression}).`
         }];
+
+        if (rule.name === 'ReferralTriageLogic') {
+          const { encounters, episodes } = extractMatchingEncountersAndEpisodes(encounterBundle);
+          matchedBundle = buildMatchedBundle(patientResource, [...encounters, ...episodes]);
+        } else {
+          matchedBundle = buildMatchedBundle(patientResource, []);
+        }
       }
 
       for (const item of queueItems) {
@@ -667,6 +747,10 @@ export default async function handler(req, res) {
       queueItem: queueItems[0] || null,
       queueItems,
       queuePersisted,
+      // v2: a FHIR Bundle of exactly the resources that made this
+      // evaluation true (null when actionRequired is false — nothing
+      // matched, so there's nothing to bundle).
+      matchedBundle,
       findings,
       evaluationTrace,
       // The raw FHIR bundles as returned by the server (before de-duping/
