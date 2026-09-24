@@ -25,12 +25,12 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshQueueBtn?.addEventListener('click', () => loadQueue(true));
 
     clearQueueBtn?.addEventListener('click', async () => {
-        if (!confirm('Clear the entire referral queue? This cannot be undone.')) {
+        if (!confirm('Clear the entire output queue? This cannot be undone.')) {
             return;
         }
 
         clearQueueBtn.disabled = true;
-        safeLog('Clearing referral queue...');
+        safeLog('Clearing output queue...');
 
         try {
             const response = await fetch('/api/queue', {
@@ -41,10 +41,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Failed to clear referral queue.');
+                throw new Error(data.error || 'Failed to clear output queue.');
             }
 
-            safeLog(`SUCCESS: Cleared ${data.deletedCount} entr${data.deletedCount === 1 ? 'y' : 'ies'} from the referral queue.`);
+            safeLog(`SUCCESS: Cleared ${data.deletedCount} entr${data.deletedCount === 1 ? 'y' : 'ies'} from the output queue.`);
             await loadQueue();
 
             showActionDetail('Clear Queue', `
@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </ol>
             `);
         } catch (error) {
-            safeLog(`<span style="color: red;">ERROR: Failed to clear referral queue: ${escapeHtml(error.message)}</span>`);
+            safeLog(`<span style="color: red;">ERROR: Failed to clear output queue: ${escapeHtml(error.message)}</span>`);
             showActionDetail('Clear Queue (failed)', `<p style="color:#c4433b;">${escapeHtml(error.message)}</p>`);
         } finally {
             clearQueueBtn.disabled = false;
@@ -70,21 +70,21 @@ document.addEventListener('DOMContentLoaded', () => {
     window.refreshReferralQueue = loadQueue;
 
     async function loadQueue(showPopup = false) {
-        queueTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:15px;">Loading referral queue...</td></tr>';
-        safeLog('Fetching referral queue via /api/queue...');
+        queueTableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:15px;">Loading output queue...</td></tr>';
+        safeLog('Fetching output queue via /api/queue...');
 
         try {
             const response = await fetch('/api/queue');
             const data = await response.json();
 
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Failed to fetch referral queue.');
+                throw new Error(data.error || 'Failed to fetch output queue.');
             }
 
             const items = data.items;
             if (!items || items.length === 0) {
-                safeLog('Referral queue is empty.');
-                queueTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:15px;">No patients currently in the referral queue.</td></tr>';
+                safeLog('Output queue is empty.');
+                queueTableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:15px;">No patients currently in the output queue.</td></tr>';
                 if (showPopup) {
                     showActionDetail('Refresh Queue', `
                         <p>Sent <code>GET /api/queue</code>, which reads the <code>referral_queue</code> table.</p>
@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            safeLog(`SUCCESS: Loaded ${items.length} referral queue record(s).`);
+            safeLog(`SUCCESS: Loaded ${items.length} output queue record(s).`);
 
             const tableFragment = document.createDocumentFragment();
 
@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const row = document.createElement('tr');
                 const queuedAt = item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A';
 
-                [item.name || 'Unknown', item.identifier || 'N/A', item.dob || 'N/A', item.rule_name || 'N/A', item.episode_name || 'N/A', item.location_name || 'N/A', item.status || 'N/A', queuedAt].forEach(value => {
+                [item.name || 'Unknown', item.identifier || 'N/A', item.dob || 'N/A', item.rule_name || 'N/A', item.episode_name || 'N/A', item.location_name || 'N/A', item.appointment_status || 'N/A', item.status || 'N/A', queuedAt].forEach(value => {
                     const cell = document.createElement('td');
                     cell.style.padding = '8px 10px';
                     cell.style.borderBottom = '1px solid #ddd';
@@ -123,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="padding:4px 8px;">${escapeHtml(item.identifier || 'N/A')}</td>
                         <td style="padding:4px 8px;">${escapeHtml(item.rule_name || 'N/A')}</td>
                         <td style="padding:4px 8px;">${escapeHtml(item.location_name || 'N/A')}</td>
+                        <td style="padding:4px 8px;">${escapeHtml(item.appointment_status || 'N/A')}</td>
                         <td style="padding:4px 8px;">${escapeHtml(item.status || 'N/A')}</td>
                     </tr>
                 `).join('');
@@ -135,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="text-align:left; padding:4px 8px;">Identifier</th>
                             <th style="text-align:left; padding:4px 8px;">Rule</th>
                             <th style="text-align:left; padding:4px 8px;">Location</th>
+                            <th style="text-align:left; padding:4px 8px;">Appt. Status</th>
                             <th style="text-align:left; padding:4px 8px;">Status</th>
                         </tr></thead>
                         <tbody>${rows}</tbody>
@@ -143,11 +145,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            safeLog(`<span style="color: red;">ERROR: Failed to load referral queue: ${escapeHtml(error.message)}</span>`);
+            safeLog(`<span style="color: red;">ERROR: Failed to load output queue: ${escapeHtml(error.message)}</span>`);
             if (showPopup) {
                 showActionDetail('Refresh Queue (failed)', `<p style="color:#c4433b;">${escapeHtml(error.message)}</p>`);
             }
-            queueTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:15px; color: red;">Error: ${escapeHtml(error.message)}</td></tr>`;
+            queueTableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:15px; color: red;">Error: ${escapeHtml(error.message)}</td></tr>`;
         }
     }
 

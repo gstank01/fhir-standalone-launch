@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <ul style="padding-left:20px;">
                 <li>The CQL logic itself — word for word, unchanged</li>
                 <li>Which patients or appointments qualify — a v1.0.0 match is still a v2.0.0 match</li>
-                <li>The referral queue, and everything already written to it</li>
+                <li>The output queue, and everything already written to it</li>
                 <li>The rule dropdown and the toggle between the two rules</li>
             </ul>
             <p style="color:#5b6472; font-size:13px;">(For the record: v1.0.0 is preserved untouched in this repo's history — v2 was added alongside it, not by editing it.)</p>
@@ -394,12 +394,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (evalData.actionRequired) {
                 if (evalData.queuePersisted) {
-                    safeLog(`SUCCESS: Patient ${identifier} added to the referral queue.`);
+                    safeLog(`SUCCESS: Patient ${identifier} added to the output queue.`);
                     // Refresh the on-page queue panel (js/queue-app.js) so the
                     // new entry shows up without a manual reload.
                     window.refreshReferralQueue?.();
                 } else {
-                    safeLog(`<span style="color: orange;">WARNING: Patient ${identifier} matched the triage rule but could not be persisted to the referral queue (see server logs).</span>`);
+                    safeLog(`<span style="color: orange;">WARNING: Patient ${identifier} matched the triage rule but could not be persisted to the output queue (see server logs).</span>`);
                 }
             } else {
                 safeLog(`Patient ${identifier} evaluated successfully. No triage action required.`);
@@ -521,7 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 parts.push('</ul></li>');
             } else if (items.length === 1 && evalData.queuePersisted) {
                 const locationSuffix = items[0].locationName ? ` at <strong>${escapeHtml(items[0].locationName)}</strong>` : '';
-                parts.push(`<li style="color:#1e8e5a;">Patient was written to the <code>referral_queue</code> table${locationSuffix} and now appears in the Referral Queue panel below.</li>`);
+                parts.push(`<li style="color:#1e8e5a;">Patient was written to the <code>referral_queue</code> table${locationSuffix} and now appears in the Output Queue panel below.</li>`);
             } else {
                 parts.push('<li style="color:#b8791a;">Patient matched the rule, but the write to <code>referral_queue</code> failed — check server logs.</li>');
             }

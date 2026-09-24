@@ -10,7 +10,7 @@ export default async function handler(req, res) {
         try {
             const sql = neon(process.env.DATABASE_URL);
             const items = await sql`
-                SELECT id, patient_id, identifier, name, dob, status, details, rule_name, episode_name, appointment_id, location_name, created_at, updated_at
+                SELECT id, patient_id, identifier, name, dob, status, details, rule_name, episode_name, appointment_id, location_name, appointment_status, created_at, updated_at
                 FROM referral_queue
                 ORDER BY created_at DESC
             `;
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
             // Include the real DB error (e.g. "column ... does not exist" when
             // a migration hasn't been run yet) — this is a dev tool, not a
             // public API, so the detail is worth more than hiding it.
-            return res.status(500).json({ success: false, error: `Internal Server Error while fetching referral queue: ${error.message}` });
+            return res.status(500).json({ success: false, error: `Internal Server Error while fetching the output queue: ${error.message}` });
         }
     }
 
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, deletedCount: deleted.length });
         } catch (error) {
             console.error("Neon DB Error while clearing referral_queue:", error);
-            return res.status(500).json({ success: false, error: 'Internal Server Error while clearing referral queue.' });
+            return res.status(500).json({ success: false, error: 'Internal Server Error while clearing the output queue.' });
         }
     }
 

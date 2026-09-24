@@ -383,6 +383,7 @@ function extractMatchingAppointmentLocations(appointmentBundle) {
       matches.push({
         appointmentId: appt.id,
         appointmentStart: appt.start || null,
+        appointmentStatus: appt.status || null,
         locationName: (location && (location.name || (location.partOf && location.partOf.display))) || SITE_LOCATION_CODES.RPY01.displayName,
         // Full raw resources, kept alongside the summary fields above so
         // buildMatchedBundle() can assemble a real FHIR Bundle out of
@@ -471,11 +472,11 @@ async function addToReferralQueue(queueItem) {
   try {
     const sql = neon(process.env.DATABASE_URL);
     await sql`
-      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details, rule_name, episode_name, appointment_id, location_name)
+      INSERT INTO referral_queue (patient_id, identifier, name, dob, status, details, rule_name, episode_name, appointment_id, location_name, appointment_status)
       VALUES (
         ${queueItem.patientId}, ${queueItem.identifier}, ${queueItem.name}, ${queueItem.dob},
         ${queueItem.status}, ${queueItem.details}, ${queueItem.ruleName}, ${queueItem.episodeName},
-        ${queueItem.appointmentId || ''}, ${queueItem.locationName || null}
+        ${queueItem.appointmentId || ''}, ${queueItem.locationName || null}, ${queueItem.appointmentStatus || null}
       )
       ON CONFLICT (patient_id, appointment_id) DO UPDATE SET
         identifier = EXCLUDED.identifier,
@@ -486,6 +487,7 @@ async function addToReferralQueue(queueItem) {
         rule_name = EXCLUDED.rule_name,
         episode_name = EXCLUDED.episode_name,
         location_name = EXCLUDED.location_name,
+        appointment_status = EXCLUDED.appointment_status,
         updated_at = now()
     `;
     return true;
@@ -684,6 +686,7 @@ export default async function handler(req, res) {
           ...baseItem,
           id: `idx-${Date.now()}-${m.appointmentId}`,
           appointmentId: m.appointmentId,
+          appointmentStatus: m.appointmentStatus,
           locationName: m.locationName,
           episodeName: null,
           details: `Matched rule "${rule.name}" — appointment${m.appointmentStart ? ` on ${m.appointmentStart}` : ''} at "${m.locationName}" (site code "RPY01").`
@@ -698,6 +701,7 @@ export default async function handler(req, res) {
             ...baseItem,
             id: `idx-${Date.now()}`,
             appointmentId: '',
+            appointmentStatus: null,
             locationName: SITE_LOCATION_CODES.RPY01.displayName,
             episodeName: null,
             details: `Matched rule "${rule.name}" (${rule.result_expression}).`
@@ -713,6 +717,7 @@ export default async function handler(req, res) {
           ...baseItem,
           id: `idx-${Date.now()}`,
           appointmentId: '',
+          appointmentStatus: null,
           locationName: null,
           episodeName: extractEpisodeName(encounterBundle),
           details: `Matched rule "${rule.name}" (${rule.result_expression}).`

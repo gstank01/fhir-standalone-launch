@@ -48,7 +48,7 @@
             <h2>FHIR Response Data</h2>
             <pre id="fhirData">No data fetched yet.</pre>
 
-            <h2>Referral Queue
+            <h2>Output Queue
                 <button id="clearQueueBtn" class="secondary" style="float: right; padding: 4px 10px; font-size: 12px; margin-left: 6px; background: #c4433b;">Clear Queue</button>
                 <button id="refreshQueueBtn" class="secondary" style="float: right; padding: 4px 10px; font-size: 12px;">Refresh</button>
             </h2>
@@ -62,6 +62,7 @@
                             <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Matched Rule</th>
                             <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd; min-width: 240px;">Episode Name</th>
                             <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd; min-width: 200px;">Location</th>
+                            <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Appointment Status</th>
                             <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Status</th>
                             <th style="padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd;">Queued At</th>
                         </tr>
@@ -289,7 +290,7 @@
             selects a patient from that worklist below. Clicking <strong>Evaluate</strong> triggers an API
             call to the FHIR server to pull that patient's data, which is then evaluated against the
             selected CQL rule. Any patient the logic evaluates to <strong>true</strong> is placed in the
-            referral queue for further action.
+            output queue for further action.
         </p>
 
         <div style="margin-bottom: 4px;">
