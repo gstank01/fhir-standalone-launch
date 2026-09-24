@@ -148,6 +148,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 <li>The <strong>FHIR Response Data</strong> panel now includes <code>matchedBundle</code> alongside <code>patientBundle</code>/<code>encounterBundle</code>/<code>appointmentBundle</code>.</li>
                 <li>The full bundle is always in the raw response JSON (expand "Raw response JSON" in the Evaluate pop-up).</li>
             </ul>
+
+            ${sectionHeader('7. No coding required to use it — it arrives pre-assembled')}
+            <p>This is the key point for anyone downstream of this endpoint: <code>matchedBundle</code> is not raw material you have to piece together — it is a <strong>complete, valid, standalone FHIR <code>Bundle</code> resource</strong> by the time it reaches you. The server does 100% of the assembly (de-duplication, ordering the Patient first, packaging each matched resource) before the HTTP response is ever sent. Nothing needs to be merged, parsed apart, cross-referenced, or reconstructed on the caller's side.</p>
+            <p>Example response shape for a matching <code>AppointmentLocationLogic</code> evaluation (trimmed for readability — real resources are full FHIR JSON):</p>
+            <pre style="font-size:11.5px; background:#1e1e1e; color:#4af626; padding:10px; border-radius:4px; overflow-x:auto; white-space:pre-wrap;">{
+  "success": true,
+  "ruleName": "AppointmentLocationLogic",
+  "actionRequired": true,
+  "matchedBundle": {
+    "resourceType": "Bundle",
+    "type": "collection",
+    "entry": [
+      { "fullUrl": "Patient/abc123",      "resource": { "resourceType": "Patient",     "id": "abc123", "...": "..." } },
+      { "fullUrl": "Appointment/xyz789",  "resource": { "resourceType": "Appointment", "id": "xyz789", "...": "..." } },
+      { "fullUrl": "Location/def456",     "resource": { "resourceType": "Location",    "id": "def456", "...": "..." } }
+    ]
+  },
+  "queueItems": [ "..." ],
+  "findings": { "...": "..." },
+  "evaluationTrace": [ "..." ]
+}</pre>
+            <p>Because <code>matchedBundle</code> is already a spec-compliant FHIR Bundle, a caller can do any of the following with zero additional code:</p>
+            <ul style="padding-left:20px;">
+                <li><strong>Forward it as-is</strong> to another FHIR-consuming system or workflow — it's already shaped the way FHIR systems expect a bundle of resources to look.</li>
+                <li><strong>POST it directly</strong> to a FHIR server's <code>/Bundle</code> endpoint (or a transaction/batch endpoint, if the receiving server expects that <code>type</code> instead of <code>collection</code>).</li>
+                <li><strong>Save it to a file</strong> or hand it to any FHIR-aware tool/library (e.g. a FHIR viewer, validator, or converter) — those tools already know how to read a <code>Bundle</code>.</li>
+                <li><strong>Display or log it</strong> directly, exactly as returned.</li>
+            </ul>
+            <p>The only thing a caller does is read <code>response.matchedBundle</code> out of the JSON <code>POST /api/evaluateCql</code> already returns — the same call already being made to get <code>actionRequired</code>. There is no separate "build the bundle" step, no second API call, and no client-side logic to write.</p>
+            <p style="color:#5b6472;"><em>If a downstream system instead needs an endpoint whose entire HTTP response body IS the Bundle (i.e. no wrapper JSON around it — just the raw FHIR resource), that would be a small additional endpoint, not something the caller has to build themselves either way.</em></p>
         `;
     }
 
