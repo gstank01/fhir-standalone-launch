@@ -104,6 +104,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function buildLogicChangelogHtml() {
         const sectionHeader = text => `<h3 style="font-size:15px; margin:20px 0 8px; color:#1e2430;">${text}</h3>`;
         const calloutBox = (bg, border, html) => `<div style="background:${bg}; border:1px solid ${border}; border-radius:6px; padding:12px 14px; margin:10px 0;">${html}</div>`;
+        const codeExcerptBlock = (title, code) => `
+            <p style="font-weight:600; font-size:13.5px; margin:14px 0 4px;">${title}</p>
+            <pre style="font-size:12px; background:#ffffff; color:#1e2430; border:1px solid #ddd; padding:10px 12px; border-radius:4px; overflow-x:auto; white-space:pre; line-height:1.5;">${escapeHtml(code)}</pre>
+        `;
 
         return `
             ${calloutBox('#eef4fb', '#cfe0f3', `<strong>In one sentence:</strong> v2 doesn't change which patients or appointments match — it just also hands back a ready-to-use FHIR <code>Bundle</code> of exactly what matched, instead of only a true/false answer.`)}
@@ -165,6 +169,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 </tbody>
             </table>
             ${calloutBox('#fbf3e6', '#f0dcb3', `<strong>Recommendation: Option A.</strong> The Java CQL engine likely already exposes the matched resources as real, usable FHIR objects — so Java can hand them straight to the Bundle without re-implementing the matching logic a second time in ObjectScript (Option B would mean writing that logic twice).`)}
+
+            ${sectionHeader('Appendix — see it in the real code')}
+            <p style="color:#5b6472; font-size:13px;">Three short excerpts, verbatim from <code>api/evaluateCql.js</code> as it runs today, for anyone who wants proof rather than a description.</p>
+
+            ${codeExcerptBlock(
+                '1. The assembly function — turns a Patient + a list of resources into a real FHIR Bundle',
+                `function buildMatchedBundle(patientResource, resources) {
+  const seen = new Set();
+  const entries = [];
+
+  const addResource = r => {
+    if (!r) return;
+    const key = \`\${r.resourceType}/\${r.id}\`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    entries.push({ fullUrl: key, resource: r });
+  };
+
+  addResource(patientResource);
+  resources.forEach(addResource);
+
+  return { resourceType: 'Bundle', type: 'collection', entry: entries };
+}`
+            )}
+
+            ${codeExcerptBlock(
+                '2. Re-deriving ReferralTriageLogic\'s matches from the raw bundle — same criteria the CQL itself checks',
+                `function extractMatchingEncountersAndEpisodes(encounterBundle) {
+  const allEncounters = encounterBundle.entry
+    .filter(e => e.resource.resourceType === 'Encounter').map(e => e.resource);
+  const allEpisodes = encounterBundle.entry
+    .filter(e => e.resource.resourceType === 'EpisodeOfCare').map(e => e.resource);
+
+  const activeEpisodes = allEpisodes.filter(ep => ep.status === 'active');
+  const activeEpisodeRefs = new Set(activeEpisodes.map(ep => \`EpisodeOfCare/\${ep.id}\`));
+
+  const referralEncounters = allEncounters.filter(enc =>
+    (enc.type || []).some(t => (t.coding || [])
+      .some(c => c.system === HOSPITAL_CODE_SYSTEM && c.code === REFERRAL_TRIAGE_CODE))
+  );
+
+  const matchedEncounters = referralEncounters.filter(enc =>
+    (enc.episodeOfCare || []).some(eoc => activeEpisodeRefs.has(eoc.reference))
+  );
+  // ...matchedEpisodes derived the same way from matchedEncounters
+  return { encounters: matchedEncounters, episodes: matchedEpisodes };
+}`
+            )}
+
+            ${codeExcerptBlock(
+                '3. Wired into one evaluation — called right after the CQL engine\'s boolean result',
+                `matchedBundle = buildMatchedBundle(
+  patientResource,
+  appointmentMatches.flatMap(m => [m.apptResource, m.locationResource])
+);`
+            )}
         `;
     }
 
