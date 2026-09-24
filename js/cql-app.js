@@ -102,14 +102,52 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function buildLogicChangelogHtml() {
+        const sectionHeader = text => `<h3 style="font-size:14px; margin:18px 0 6px; border-bottom:1px solid #ddd; padding-bottom:4px;">${text}</h3>`;
         return `
-            <p>Both CQL rules were bumped from <strong>v1.0.0</strong> to <strong>v2.0.0</strong>. The v1.0.0 definitions are unchanged and preserved as-is in this repo's git history (<code>sql/004_seed_referral_triage_rule.sql</code> and <code>sql/006_seed_appointment_location_rule.sql</code>) — v2 is a separate, additive update (<code>sql/008</code> and <code>sql/009</code>), not an edit to those files.</p>
-            <p><strong>What actually changed:</strong> the matching logic itself — the CQL <code>define</code> statements, and therefore which patients/appointments qualify — is <em>identical</em> between v1 and v2. What's new is what the server returns after evaluation: a real FHIR <code>Bundle</code> resource (<code>matchedBundle</code> in the response) containing exactly the resources that made the rule evaluate to true:</p>
+            <p>Both rules in <code>cql_rules</code> were bumped from <strong>v1.0.0</strong> to <strong>v2.0.0</strong>. This is a summary of exactly what did and didn't change, down to the function and file level.</p>
+
+            ${sectionHeader('1. What did NOT change')}
             <ul style="padding-left:20px;">
-                <li><strong>ReferralTriageLogic v2:</strong> Patient + the matching Encounter(s) + the matching EpisodeOfCare(s).</li>
-                <li><strong>AppointmentLocationLogic v2:</strong> Patient + each matching Appointment + its Location.</li>
+                <li>The CQL source (<code>cql_text</code>) and compiled ELM (<code>elm_json</code>) — byte-for-byte identical to v1.0.0. Every <code>define</code> statement, every code/OID, every boolean expression is untouched.</li>
+                <li>Which patients or appointments qualify — since the matching logic is unchanged, a patient who matched under v1.0.0 matches under v2.0.0 and vice versa. <code>actionRequired</code>, <code>findings</code>, and <code>evaluationTrace</code> are computed exactly the same way as before.</li>
+                <li>The <code>referral_queue</code> table and what gets written to it — same columns, same one-row-per-patient (ReferralTriageLogic) / one-row-per-matching-appointment (AppointmentLocationLogic) behavior.</li>
+                <li>The rule dropdown, the toggle between the two rules, and which FHIR resources get fetched for each (Encounter+EpisodeOfCare vs. Appointment+Location) — all unchanged.</li>
+                <li>The v1.0.0 seed files themselves — <code>sql/004_seed_referral_triage_rule.sql</code> and <code>sql/006_seed_appointment_location_rule.sql</code> are untouched in this repo and in git history. v2 was added by two new migrations, <code>sql/008_bump_referral_triage_rule_v2.sql</code> and <code>sql/009_bump_appointment_location_rule_v2.sql</code>, which only run a plain <code>UPDATE</code> on <code>version</code>/<code>description</code> — they don't touch <code>cql_text</code> or <code>elm_json</code> at all.</li>
             </ul>
-            <p>That bundle is assembled in <code>api/evaluateCql.js</code> after the CQL engine returns its boolean result — it's not part of the CQL/ELM itself, so it applies the same way no matter which of the two rules you toggle to below.</p>
+
+            ${sectionHeader('2. What DID change')}
+            <p>One new field in the <code>POST /api/evaluateCql</code> response: <code>matchedBundle</code>. It's a real FHIR <code>Bundle</code> resource (<code>resourceType: "Bundle"</code>, <code>type: "collection"</code>) containing exactly the resources that made the rule evaluate to <code>true</code> — nothing more.</p>
+            <ul style="padding-left:20px;">
+                <li>Present (non-null) only when <code>actionRequired</code> is <code>true</code>. When the rule evaluates to <code>false</code>, <code>matchedBundle</code> is <code>null</code> — there's nothing matched to bundle.</li>
+                <li>Every bundle starts with the Patient resource, then the rule-specific matched resources below. Entries are de-duplicated by <code>resourceType/id</code> (same de-dupe rule the engine's own <code>buildPristineBundle()</code> already used), so a resource referenced more than once still appears exactly once.</li>
+                <li>Assembled entirely in <code>api/evaluateCql.js</code>, in plain JavaScript, <em>after</em> the CQL engine has already returned its boolean result. It reads the raw FHIR bundle the server fetched — not the CQL engine's internal (wrapped) representation — so what's inside is ordinary, valid FHIR JSON.</li>
+            </ul>
+
+            ${sectionHeader('3. ReferralTriageLogic v2 — exactly what goes in matchedBundle')}
+            <p>Patient + every matching Encounter + every matching EpisodeOfCare, where "matching" means the same two conditions the CQL itself checks:</p>
+            <ol style="padding-left:20px;">
+                <li>The Encounter's <code>type</code> contains a coding with system <code>urn:oid:1.2.840.114350.1.13.520.3.7.10.698084.30</code> (HospitalCodes) and code <code>2611</code> (Referral Triage).</li>
+                <li>That Encounter's <code>episodeOfCare</code> list contains a reference to an EpisodeOfCare whose <code>status</code> is <code>active</code>.</li>
+            </ol>
+            <p>New function: <code>extractMatchingEncountersAndEpisodes(encounterBundle)</code> in <code>api/evaluateCql.js</code>. It re-derives this pair-matching directly from the raw <code>encounterBundle</code> (not from the CQL engine's wrapped results), so it can hand back plain, unwrapped Encounter/EpisodeOfCare resource objects ready to drop into a Bundle.</p>
+
+            ${sectionHeader('4. AppointmentLocationLogic v2 — exactly what goes in matchedBundle')}
+            <p>Patient + every matching Appointment + the specific Location each one matched at, where "matching" means the same two conditions the CQL itself checks:</p>
+            <ol style="padding-left:20px;">
+                <li>A Location resource whose <code>partOf.reference</code> points at <code>Location/eLVUrSrT4-KVXjmLgWvTBDg3</code> (the site mapped to code "RPY01", The Royal Marsden - Chelsea).</li>
+                <li>An Appointment with a <code>participant.actor.reference</code> pointing at that Location.</li>
+            </ol>
+            <p>The existing function <code>extractMatchingAppointmentLocations(appointmentBundle)</code> was extended: it already computed this match for the referral-queue rows, and now it also returns the full raw <code>apptResource</code>/<code>locationResource</code> objects (not just the summary fields like <code>appointmentId</code>/<code>locationName</code> it returned before), so the same single pass can feed both the queue rows and the matched bundle.</p>
+
+            ${sectionHeader('5. Shared plumbing')}
+            <p>New function <code>buildMatchedBundle(patientResource, resources)</code> does the actual assembly for both rules — adds the Patient, then each resource, skipping anything already seen by <code>resourceType/id</code>.</p>
+
+            ${sectionHeader('6. Where to see it')}
+            <ul style="padding-left:20px;">
+                <li>The <strong>Evaluate</strong> pop-up notes the resource count when a match produced a bundle.</li>
+                <li>The <strong>FHIR Response Data</strong> panel now includes <code>matchedBundle</code> alongside <code>patientBundle</code>/<code>encounterBundle</code>/<code>appointmentBundle</code>.</li>
+                <li>The full bundle is always in the raw response JSON (expand "Raw response JSON" in the Evaluate pop-up).</li>
+            </ul>
         `;
     }
 
