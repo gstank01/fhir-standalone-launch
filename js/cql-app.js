@@ -150,7 +150,13 @@ document.addEventListener('DOMContentLoaded', () => {
             </ul>
 
             ${sectionHeader('7. No coding required to use it — it arrives pre-assembled')}
-            <p>This is the key point for anyone downstream of this endpoint: <code>matchedBundle</code> is not raw material you have to piece together — it is a <strong>complete, valid, standalone FHIR <code>Bundle</code> resource</strong> by the time it reaches you. The server does 100% of the assembly (de-duplication, ordering the Patient first, packaging each matched resource) before the HTTP response is ever sent. Nothing needs to be merged, parsed apart, cross-referenced, or reconstructed on the caller's side.</p>
+            <p><strong>Which server does the assembly?</strong> There are three servers involved in one evaluation, and only one of them builds the bundle:</p>
+            <ol style="padding-left:20px;">
+                <li>The <strong>Epic FHIR server</strong> (your EHR) — only answers the raw <code>GET</code> queries for Patient/Encounter/EpisodeOfCare or Patient/Appointment/Location. It has no idea this rule engine exists and returns nothing shaped like <code>matchedBundle</code>.</li>
+                <li>This app's own backend — <strong>the Vercel serverless function at <code>api/evaluateCql.js</code></strong> — is the one and only place <code>matchedBundle</code> gets built. It's the same function that already authenticates to Epic, runs the CQL engine, and writes to <code>referral_queue</code>; assembling <code>matchedBundle</code> (via <code>buildMatchedBundle()</code>) is one more step it does before sending its HTTP response back.</li>
+                <li>The <strong>caller</strong> (this browser's JS today; potentially Health Connect or another downstream system tomorrow) — does nothing but receive that already-finished response and read the <code>matchedBundle</code> field out of it.</li>
+            </ol>
+            <p>So concretely: <code>matchedBundle</code> is not raw material you have to piece together — it is a <strong>complete, valid, standalone FHIR <code>Bundle</code> resource</strong> by the time it reaches the caller. Vercel's <code>api/evaluateCql.js</code> does 100% of the assembly (de-duplication, ordering the Patient first, packaging each matched resource) before the HTTP response is ever sent. Nothing needs to be merged, parsed apart, cross-referenced, or reconstructed on the caller's side — that work already happened, on Vercel, inside this one endpoint.</p>
             <p>Example response shape for a matching <code>AppointmentLocationLogic</code> evaluation (trimmed for readability — real resources are full FHIR JSON):</p>
             <pre style="font-size:11.5px; background:#1e1e1e; color:#4af626; padding:10px; border-radius:4px; overflow-x:auto; white-space:pre-wrap;">{
   "success": true,
