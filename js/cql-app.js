@@ -382,7 +382,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             safeLog('SUCCESS: CQL evaluation completed successfully.');
-            cqlResultOutput.textContent = JSON.stringify(evalData, null, 2);
+            // Trimmed to just the two things that matter at a glance — the
+            // logic's outcome and the resulting Bundle. Everything else
+            // (findings, trace, queue items, source bundles) is still one
+            // click away in the Evaluate pop-up's "Raw response JSON".
+            cqlResultOutput.textContent = JSON.stringify(
+                { actionRequired: evalData.actionRequired, matchedBundle: evalData.matchedBundle ?? null },
+                null,
+                2
+            );
 
             if (evalData.actionRequired) {
                 if (evalData.queuePersisted) {
