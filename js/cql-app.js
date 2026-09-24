@@ -102,88 +102,69 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function buildLogicChangelogHtml() {
-        const sectionHeader = text => `<h3 style="font-size:14px; margin:18px 0 6px; border-bottom:1px solid #ddd; padding-bottom:4px;">${text}</h3>`;
+        const sectionHeader = text => `<h3 style="font-size:15px; margin:20px 0 8px; color:#1e2430;">${text}</h3>`;
+        const calloutBox = (bg, border, html) => `<div style="background:${bg}; border:1px solid ${border}; border-radius:6px; padding:12px 14px; margin:10px 0;">${html}</div>`;
+
         return `
-            <p>Both rules in <code>cql_rules</code> were bumped from <strong>v1.0.0</strong> to <strong>v2.0.0</strong>. This is a summary of exactly what did and didn't change, down to the function and file level.</p>
+            ${calloutBox('#eef4fb', '#cfe0f3', `<strong>In one sentence:</strong> v2 doesn't change which patients or appointments match — it just also hands back a ready-to-use FHIR <code>Bundle</code> of exactly what matched, instead of only a true/false answer.`)}
 
-            ${sectionHeader('1. What did NOT change')}
+            ${sectionHeader("What's new")}
+            <p>Both rules moved from <strong>v1.0.0</strong> to <strong>v2.0.0</strong>. A successful match now returns one new field, <code>matchedBundle</code> — a complete FHIR Bundle containing:</p>
             <ul style="padding-left:20px;">
-                <li>The CQL source (<code>cql_text</code>) and compiled ELM (<code>elm_json</code>) — byte-for-byte identical to v1.0.0. Every <code>define</code> statement, every code/OID, every boolean expression is untouched.</li>
-                <li>Which patients or appointments qualify — since the matching logic is unchanged, a patient who matched under v1.0.0 matches under v2.0.0 and vice versa. <code>actionRequired</code>, <code>findings</code>, and <code>evaluationTrace</code> are computed exactly the same way as before.</li>
-                <li>The <code>referral_queue</code> table and what gets written to it — same columns, same one-row-per-patient (ReferralTriageLogic) / one-row-per-matching-appointment (AppointmentLocationLogic) behavior.</li>
-                <li>The rule dropdown, the toggle between the two rules, and which FHIR resources get fetched for each (Encounter+EpisodeOfCare vs. Appointment+Location) — all unchanged.</li>
-                <li>The v1.0.0 seed files themselves — <code>sql/004_seed_referral_triage_rule.sql</code> and <code>sql/006_seed_appointment_location_rule.sql</code> are untouched in this repo and in git history. v2 was added by two new migrations, <code>sql/008_bump_referral_triage_rule_v2.sql</code> and <code>sql/009_bump_appointment_location_rule_v2.sql</code>, which only run a plain <code>UPDATE</code> on <code>version</code>/<code>description</code> — they don't touch <code>cql_text</code> or <code>elm_json</code> at all.</li>
+                <li><strong>ReferralTriageLogic:</strong> the Patient + the Encounter(s) and EpisodeOfCare(s) that matched</li>
+                <li><strong>AppointmentLocationLogic:</strong> the Patient + each matching Appointment and its Location</li>
             </ul>
 
-            ${sectionHeader('2. What DID change')}
-            <p>One new field in the <code>POST /api/evaluateCql</code> response: <code>matchedBundle</code>. It's a real FHIR <code>Bundle</code> resource (<code>resourceType: "Bundle"</code>, <code>type: "collection"</code>) containing exactly the resources that made the rule evaluate to <code>true</code> — nothing more.</p>
+            ${sectionHeader('What stayed exactly the same')}
             <ul style="padding-left:20px;">
-                <li>Present (non-null) only when <code>actionRequired</code> is <code>true</code>. When the rule evaluates to <code>false</code>, <code>matchedBundle</code> is <code>null</code> — there's nothing matched to bundle.</li>
-                <li>Every bundle starts with the Patient resource, then the rule-specific matched resources below. Entries are de-duplicated by <code>resourceType/id</code> (same de-dupe rule the engine's own <code>buildPristineBundle()</code> already used), so a resource referenced more than once still appears exactly once.</li>
-                <li>Assembled entirely in <code>api/evaluateCql.js</code>, in plain JavaScript, <em>after</em> the CQL engine has already returned its boolean result. It reads the raw FHIR bundle the server fetched — not the CQL engine's internal (wrapped) representation — so what's inside is ordinary, valid FHIR JSON.</li>
+                <li>The CQL logic itself — word for word, unchanged</li>
+                <li>Which patients or appointments qualify — a v1.0.0 match is still a v2.0.0 match</li>
+                <li>The referral queue, and everything already written to it</li>
+                <li>The rule dropdown and the toggle between the two rules</li>
             </ul>
+            <p style="color:#5b6472; font-size:13px;">(For the record: v1.0.0 is preserved untouched in this repo's history — v2 was added alongside it, not by editing it.)</p>
 
-            ${sectionHeader('3. ReferralTriageLogic v2 — exactly what goes in matchedBundle')}
-            <p>Patient + every matching Encounter + every matching EpisodeOfCare, where "matching" means the same two conditions the CQL itself checks:</p>
+            ${sectionHeader('Who does the work, today')}
+            <p>Three systems touch a single evaluation. Only one of them builds the Bundle:</p>
             <ol style="padding-left:20px;">
-                <li>The Encounter's <code>type</code> contains a coding with system <code>urn:oid:1.2.840.114350.1.13.520.3.7.10.698084.30</code> (HospitalCodes) and code <code>2611</code> (Referral Triage).</li>
-                <li>That Encounter's <code>episodeOfCare</code> list contains a reference to an EpisodeOfCare whose <code>status</code> is <code>active</code>.</li>
+                <li><strong>Epic (the FHIR server)</strong> — only answers raw data requests. It has never heard of "matchedBundle."</li>
+                <li><strong>This app's backend (Vercel)</strong> — runs the CQL logic <em>and</em> builds the Bundle, in the same step, before it ever sends a response.</li>
+                <li><strong>Whoever calls this app</strong> — just reads <code>matchedBundle</code> out of the response. Nothing to build, nothing to reassemble.</li>
             </ol>
-            <p>New function: <code>extractMatchingEncountersAndEpisodes(encounterBundle)</code> in <code>api/evaluateCql.js</code>. It re-derives this pair-matching directly from the raw <code>encounterBundle</code> (not from the CQL engine's wrapped results), so it can hand back plain, unwrapped Encounter/EpisodeOfCare resource objects ready to drop into a Bundle.</p>
+            ${calloutBox('#eef7f0', '#cdeadd', `A caller can forward <code>matchedBundle</code> to another system, POST it straight to a FHIR server, save it, or display it — as-is, with zero extra code.`)}
 
-            ${sectionHeader('4. AppointmentLocationLogic v2 — exactly what goes in matchedBundle')}
-            <p>Patient + every matching Appointment + the specific Location each one matched at, where "matching" means the same two conditions the CQL itself checks:</p>
-            <ol style="padding-left:20px;">
-                <li>A Location resource whose <code>partOf.reference</code> points at <code>Location/eLVUrSrT4-KVXjmLgWvTBDg3</code> (the site mapped to code "RPY01", The Royal Marsden - Chelsea).</li>
-                <li>An Appointment with a <code>participant.actor.reference</code> pointing at that Location.</li>
-            </ol>
-            <p>The existing function <code>extractMatchingAppointmentLocations(appointmentBundle)</code> was extended: it already computed this match for the referral-queue rows, and now it also returns the full raw <code>apptResource</code>/<code>locationResource</code> objects (not just the summary fields like <code>appointmentId</code>/<code>locationName</code> it returned before), so the same single pass can feed both the queue rows and the matched bundle.</p>
+            ${sectionHeader("Could the CQL logic itself produce the Bundle?")}
+            <p>No — and this isn't a gap we could close later, it's how CQL works by design. CQL is a <strong>query language</strong>: it's built to answer questions like "does this patient qualify," not to construct new resources like a <code>Bundle</code>. It already computes the matching data internally (that's exactly what its own named rules like "Active Episodes of Care" are) — what it can't do is wrap that into a formal FHIR container resource. That packaging step is simple, but it always has to happen in the surrounding code, never inside the CQL logic itself — regardless of which platform is running it.</p>
 
-            ${sectionHeader('5. Shared plumbing')}
-            <p>New function <code>buildMatchedBundle(patientResource, resources)</code> does the actual assembly for both rules — adds the Patient, then each resource, skipping anything already seen by <code>resourceType/id</code>.</p>
-
-            ${sectionHeader('6. Where to see it')}
-            <ul style="padding-left:20px;">
-                <li>The <strong>Evaluate</strong> pop-up notes the resource count when a match produced a bundle.</li>
-                <li>The <strong>FHIR Response Data</strong> panel now includes <code>matchedBundle</code> alongside <code>patientBundle</code>/<code>encounterBundle</code>/<code>appointmentBundle</code>.</li>
-                <li>The full bundle is always in the raw response JSON (expand "Raw response JSON" in the Evaluate pop-up).</li>
-            </ul>
-
-            ${sectionHeader('7. No coding required to use it — it arrives pre-assembled')}
-            <p><strong>Which server does the assembly?</strong> There are three servers involved in one evaluation, and only one of them builds the bundle:</p>
-            <ol style="padding-left:20px;">
-                <li>The <strong>Epic FHIR server</strong> (your EHR) — only answers the raw <code>GET</code> queries for Patient/Encounter/EpisodeOfCare or Patient/Appointment/Location. It has no idea this rule engine exists and returns nothing shaped like <code>matchedBundle</code>.</li>
-                <li>This app's own backend — <strong>the Vercel serverless function at <code>api/evaluateCql.js</code></strong> — is the one and only place <code>matchedBundle</code> gets built. It's the same function that already authenticates to Epic, runs the CQL engine, and writes to <code>referral_queue</code>; assembling <code>matchedBundle</code> (via <code>buildMatchedBundle()</code>) is one more step it does before sending its HTTP response back.</li>
-                <li>The <strong>caller</strong> (this browser's JS today; potentially Health Connect or another downstream system tomorrow) — does nothing but receive that already-finished response and read the <code>matchedBundle</code> field out of it.</li>
-            </ol>
-            <p>So concretely: <code>matchedBundle</code> is not raw material you have to piece together — it is a <strong>complete, valid, standalone FHIR <code>Bundle</code> resource</strong> by the time it reaches the caller. Vercel's <code>api/evaluateCql.js</code> does 100% of the assembly (de-duplication, ordering the Patient first, packaging each matched resource) before the HTTP response is ever sent. Nothing needs to be merged, parsed apart, cross-referenced, or reconstructed on the caller's side — that work already happened, on Vercel, inside this one endpoint.</p>
-            <p>Example response shape for a matching <code>AppointmentLocationLogic</code> evaluation (trimmed for readability — real resources are full FHIR JSON):</p>
-            <pre style="font-size:11.5px; background:#1e1e1e; color:#4af626; padding:10px; border-radius:4px; overflow-x:auto; white-space:pre-wrap;">{
-  "success": true,
-  "ruleName": "AppointmentLocationLogic",
-  "actionRequired": true,
-  "matchedBundle": {
-    "resourceType": "Bundle",
-    "type": "collection",
-    "entry": [
-      { "fullUrl": "Patient/abc123",      "resource": { "resourceType": "Patient",     "id": "abc123", "...": "..." } },
-      { "fullUrl": "Appointment/xyz789",  "resource": { "resourceType": "Appointment", "id": "xyz789", "...": "..." } },
-      { "fullUrl": "Location/def456",     "resource": { "resourceType": "Location",    "id": "def456", "...": "..." } }
-    ]
-  },
-  "queueItems": [ "..." ],
-  "findings": { "...": "..." },
-  "evaluationTrace": [ "..." ]
-}</pre>
-            <p>Because <code>matchedBundle</code> is already a spec-compliant FHIR Bundle, a caller can do any of the following with zero additional code:</p>
-            <ul style="padding-left:20px;">
-                <li><strong>Forward it as-is</strong> to another FHIR-consuming system or workflow — it's already shaped the way FHIR systems expect a bundle of resources to look.</li>
-                <li><strong>POST it directly</strong> to a FHIR server's <code>/Bundle</code> endpoint (or a transaction/batch endpoint, if the receiving server expects that <code>type</code> instead of <code>collection</code>).</li>
-                <li><strong>Save it to a file</strong> or hand it to any FHIR-aware tool/library (e.g. a FHIR viewer, validator, or converter) — those tools already know how to read a <code>Bundle</code>.</li>
-                <li><strong>Display or log it</strong> directly, exactly as returned.</li>
-            </ul>
-            <p>The only thing a caller does is read <code>response.matchedBundle</code> out of the JSON <code>POST /api/evaluateCql</code> already returns — the same call already being made to get <code>actionRequired</code>. There is no separate "build the bundle" step, no second API call, and no client-side logic to write.</p>
-            <p style="color:#5b6472;"><em>If a downstream system instead needs an endpoint whose entire HTTP response body IS the Bundle (i.e. no wrapper JSON around it — just the raw FHIR resource), that would be a small additional endpoint, not something the caller has to build themselves either way.</em></p>
+            ${sectionHeader('If this becomes an InterSystems Health Connect implementation')}
+            <p>The same packaging step needs a home there too. There are two options:</p>
+            <table style="width:100%; border-collapse:collapse; font-size:13.5px; margin:10px 0;">
+                <thead>
+                    <tr style="background:#f4f4f4;">
+                        <th style="text-align:left; padding:8px 10px; border:1px solid #ddd; width:22%;"></th>
+                        <th style="text-align:left; padding:8px 10px; border:1px solid #ddd;">Option A — Java builds it</th>
+                        <th style="text-align:left; padding:8px 10px; border:1px solid #ddd;">Option B — ObjectScript builds it</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding:8px 10px; border:1px solid #ddd; font-weight:600;">Who packages the Bundle</td>
+                        <td style="padding:8px 10px; border:1px solid #ddd;">The Java class that runs the CQL logic</td>
+                        <td style="padding:8px 10px; border:1px solid #ddd;">The ObjectScript Business Process, after Java hands back a plain true/false</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:8px 10px; border:1px solid #ddd; font-weight:600;">Java stays a "pure function"?</td>
+                        <td style="padding:8px 10px; border:1px solid #ddd;">No — it now returns boolean + Bundle</td>
+                        <td style="padding:8px 10px; border:1px solid #ddd;">Yes — unchanged from the original design</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:8px 10px; border:1px solid #ddd; font-weight:600;">Matches this app's pattern?</td>
+                        <td style="padding:8px 10px; border:1px solid #ddd;">Yes — same as Vercel today</td>
+                        <td style="padding:8px 10px; border:1px solid #ddd;">No — splits the work across two components</td>
+                    </tr>
+                </tbody>
+            </table>
+            ${calloutBox('#fbf3e6', '#f0dcb3', `<strong>Recommendation: Option A.</strong> The Java CQL engine likely already exposes the matched resources as real, usable FHIR objects — so Java can hand them straight to the Bundle without re-implementing the matching logic a second time in ObjectScript (Option B would mean writing that logic twice).`)}
         `;
     }
 
