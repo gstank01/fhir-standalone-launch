@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ${calloutBox('#fbf3e6', '#f0dcb3', `<strong>Recommendation: Option A.</strong> The Java CQL engine likely already exposes the matched resources as real, usable FHIR objects — so Java can hand them straight to the Bundle without re-implementing the matching logic a second time in ObjectScript (Option B would mean writing that logic twice).`)}
 
             ${sectionHeader('Appendix — see it in the real code')}
-            <p style="color:#5b6472; font-size:13px;">Three short excerpts, verbatim from <code>api/evaluateCql.js</code> as it runs today, for anyone who wants proof rather than a description.</p>
+            <p style="color:#5b6472; font-size:13px;">Verbatim excerpts from <code>api/evaluateCql.js</code> as it runs today, with a plain-language walkthrough and a worked example for the two matching functions, for anyone who wants proof rather than a description.</p>
 
             ${codeExcerptBlock(
                 '1. The assembly function — turns a Patient + a list of resources into a real FHIR Bundle',
@@ -217,9 +217,69 @@ document.addEventListener('DOMContentLoaded', () => {
   return { encounters: matchedEncounters, episodes: matchedEpisodes };
 }`
             )}
+            <p style="font-size:13px;"><strong>Walkthrough:</strong> split the bundle into all Encounters and all EpisodeOfCares → keep only the <em>active</em> episodes, and build a lookup set of their reference strings (e.g. <code>"EpisodeOfCare/abc123"</code>) → keep only encounters tagged with the Referral Triage code (system + code <code>2611</code>) → keep only those encounters whose <code>episodeOfCare</code> list actually points at one of the active episodes. Those two filters are the same two conditions the CQL logic itself checks — this just re-runs them on the raw, unwrapped FHIR JSON so the result is bundle-ready.</p>
 
             ${codeExcerptBlock(
-                '3. Wired into one evaluation — called right after the CQL engine\'s boolean result',
+                '3. Re-deriving AppointmentLocationLogic\'s matches — same criteria the CQL itself checks',
+                `function extractMatchingAppointmentLocations(appointmentBundle) {
+  const targetSiteRef = \`Location/\${SITE_LOCATION_CODES.RPY01.locationId}\`;
+
+  const locationsById = {};
+  appointmentBundle.entry
+    .filter(e => e.resource.resourceType === 'Location')
+    .forEach(e => { locationsById[e.resource.id] = e.resource; });
+
+  const targetLocationRefs = new Set(
+    Object.values(locationsById)
+      .filter(loc => loc.partOf && loc.partOf.reference === targetSiteRef)
+      .map(loc => \`Location/\${loc.id}\`)
+  );
+
+  const matches = [];
+  appointmentBundle.entry
+    .filter(e => e.resource.resourceType === 'Appointment')
+    .forEach(e => {
+      const appt = e.resource;
+      const matchedParticipant = (appt.participant || [])
+        .find(p => p.actor && targetLocationRefs.has(p.actor.reference));
+      if (!matchedParticipant) return;
+
+      const location = locationsById[matchedParticipant.actor.reference.split('/')[1]];
+      matches.push({ appointmentId: appt.id, appointmentStatus: appt.status, locationName: location.name, /* ... */ });
+    });
+
+  return matches;
+}`
+            )}
+            <p style="font-size:13px;"><strong>Walkthrough:</strong> index every Location resource in the bundle by id → keep only the ones whose <code>partOf</code> points at the RPY01 site Location → for each Appointment, check whether any of its <code>participant</code> entries reference one of those site Locations; if none do, skip it → for each match, look up the actual Location it pointed to and record both the summary fields (status, name, etc.) and the raw resources for the Bundle.</p>
+
+            <p style="font-size:13px; font-weight:600; margin:10px 0 4px;">Worked example</p>
+            <p style="font-size:13px;">A bundle with two Locations and two Appointments — only one of each actually qualifies:</p>
+            ${codeExcerptBlock(
+                'Input (trimmed)',
+                `[
+  { "resourceType": "Location", "id": "loc-chelsea-clinic2", "name": "Chelsea - Clinic 2",
+    "partOf": { "reference": "Location/eLVUrSrT4-KVXjmLgWvTBDg3" } },   // <- RPY01 site
+
+  { "resourceType": "Location", "id": "loc-other-site", "name": "Some Other Hospital",
+    "partOf": { "reference": "Location/someOtherSiteId" } },           // <- NOT RPY01
+
+  { "resourceType": "Appointment", "id": "appt-001", "status": "booked", "start": "2026-01-15T10:00:00Z",
+    "participant": [
+      { "actor": { "reference": "Patient/pat1" } },
+      { "actor": { "reference": "Location/loc-chelsea-clinic2" } }     // <- points at RPY01 site
+    ] },
+
+  { "resourceType": "Appointment", "id": "appt-002", "status": "fulfilled",
+    "participant": [
+      { "actor": { "reference": "Location/loc-other-site" } }         // <- points elsewhere
+    ] }
+]`
+            )}
+            <p style="font-size:13px;"><strong>Result:</strong> <code>targetLocationRefs</code> ends up containing only <code>"Location/loc-chelsea-clinic2"</code> (the other Location's <code>partOf</code> doesn't match). <code>appt-001</code>'s participant list includes that reference → <strong>match</strong>, recorded with status <code>"booked"</code> and location name <code>"Chelsea - Clinic 2"</code>. <code>appt-002</code>'s only participant is the other Location → no match → skipped entirely. <code>matches</code> ends up with exactly one entry, for <code>appt-001</code>.</p>
+
+            ${codeExcerptBlock(
+                '4. Wired into one evaluation — called right after the CQL engine\'s boolean result',
                 `matchedBundle = buildMatchedBundle(
   patientResource,
   appointmentMatches.flatMap(m => [m.apptResource, m.locationResource])
