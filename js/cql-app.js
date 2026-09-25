@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         return `
-            ${calloutBox('#eef4fb', '#cfe0f3', `<strong>In one sentence:</strong> v2 doesn't change which patients or appointments match — it just also hands back a ready-to-use FHIR <code>Bundle</code> of exactly what matched, instead of only a true/false answer.`)}
+            ${calloutBox('#eef4fb', '#cfe0f3', `<strong>In a nutshell:</strong> v2 doesn't change the logic; it just also hands back a ready-to-use FHIR <code>Bundle</code> of exactly what matched, instead of only a true/false answer.`)}
 
             ${sectionHeader("What's new")}
             <p>Both rules moved from <strong>v1.0.0</strong> to <strong>v2.0.0</strong>. A successful match now returns one new field, <code>matchedBundle</code> — a complete FHIR Bundle containing:</p>
@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ${sectionHeader('Who does the work, today')}
             <p>Three systems touch a single evaluation. Only one of them builds the Bundle:</p>
             <ol style="padding-left:20px;">
-                <li><strong>Epic (the FHIR server)</strong> — only answers raw data requests. It has never heard of "matchedBundle."</li>
+                <li><strong>Epic (the FHIR server)</strong> — answers the GET request and returns a bundle acording to the Epic configuration.</li>
                 <li><strong>This app's backend (Vercel)</strong> — runs the CQL logic <em>and</em> builds the Bundle, in the same step, before it ever sends a response.</li>
                 <li><strong>Whoever calls this app</strong> — just reads <code>matchedBundle</code> out of the response. Nothing to build, nothing to reassemble.</li>
             </ol>
